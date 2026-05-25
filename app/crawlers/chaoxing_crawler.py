@@ -163,8 +163,8 @@ class ChaoxingCrawler:
 
     async def fetch_assignments(self) -> List[Dict[str, Any]]:
         """
-        获取所有课程的待办作业
-        API: /api/workTestPendingNew (GET)
+        获取所有课程的作业
+        策略：进入每门课的课程页面 → 提取作业链接 → 访问作业列表 → 解析HTML
         """
         assignments = []
         try:
@@ -182,36 +182,10 @@ class ChaoxingCrawler:
                 logger.info(f"  [{i}/{len(courses)}] {name}")
 
                 try:
-                    resp = await self.client.get(
-                        f"{self.HOST_CP}/api/workTestPendingNew",
-                        params={"courseId": c["courseid"], "clazzId": c["clazzid"]},
-                    )
-                    data = resp.json()
-                except Exception:
-                    data = []
-
-                if isinstance(data, list):
-                    for item in data:
-                        a = self._parse_assign_item(item, name)
-                        if a:
-                            assignments.append(a)
-
-            # 也尝试获取已结束的作业
-            try:
-                resp2 = await self.client.get(
-                    f"{self.HOST_CP}/api/workTestPendingNew",
-                    params={"stateType": "2"},
-                )
-                finished = resp2.json()
-                if isinstance(finished, list):
-                    for item in finished:
-                        cname = item.get("courseName", "") or item.get("course_name", "") or "未知课程"
-                        a = self._parse_assign_item(item, cname)
-                        if a:
-                            a["is_completed"] = True
-                            assignments.append(a)
-            except Exception:
-                pass
+                    course_assignments = await self._fetch_course_work(c)
+                    assignments.extend(course_assignments)
+                except Exception as e:
+                    logger.warning(f"    ⚠️ {e}")
 
             logger.info(f"✅ 共获取到 {len(assignments)} 个作业")
             return assignments
@@ -220,55 +194,107 @@ class ChaoxingCrawler:
             logger.error(f"❌ 获取作业失败: {e}", exc_info=True)
             return assignments
 
-    def _parse_assign_item(self, item: dict, course_name: str) -> Optional[Dict]:
-        """解析单个作业项"""
-        if not item or not isinstance(item, dict):
-            return None
+    async def _fetch_course_work(self, course: Dict) -> List[Dict]:
+        """获取单门课程的作业"""
+        results = []
 
-        title = (item.get("title") or item.get("name") or item.get("workName") or "").strip()
-        if not title:
-            return None
+        # 1. 访问课程中间页（302重定向到课程主页，同时获取 enc/openc 参数）
+        middle_url = (
+            f"{self.HOST_CP}/visit/stucoursemiddle"
+            f"?courseid={course['courseid']}"
+            f"&clazzid={course['clazzid']}"
+            f"&vc=1&cpi={course['cpi']}"
+        )
+        resp = await self.client.get(middle_url, follow_redirects=True)
+        current_url = str(resp.url)
 
-        due_time = None
-        due_str = item.get("endTime") or item.get("deadline") or item.get("endtime") or ""
-        if due_str:
-            try:
-                due_time = datetime.fromtimestamp(int(due_str) / 1000)
-            except (ValueError, OSError):
-                due_time = self._parse_due_time(str(due_str))
+        # 从最终 URL 提取参数
+        enc = ""
+        openc = ""
+        if "?" in current_url:
+            qs = parse_qs(current_url.split("?")[1])
+            enc = (qs.get("enc") or [""])[0]
+            openc = (qs.get("openc") or [""])[0]
 
-        is_completed = item.get("status") in ("已完成", "已提交", "已批阅", "2", "3")
+        if not enc:
+            # 备用：从页面HTML的data属性中提取
+            for m in re.finditer(r'data="([^"]*getAllWork[^"]*)"', resp.text):
+                work_url = m.group(1)
+                if "?" in work_url:
+                    wqs = parse_qs(work_url.split("?")[1])
+                    enc = (wqs.get("enc") or [""])[0]
+                    openc = (wqs.get("openc") or [""])[0]
 
-        uid = item.get("id") or hashlib.md5(f"{course_name}_{title}_{due_str}".encode()).hexdigest()[:16]
+        if not enc:
+            logger.warning(f"    ⚠️ 无法获取 enc 参数，跳过")
+            return results
 
-        return {
-            "remote_id": str(uid),
-            "title": title[:200],
-            "course_name": course_name,
-            "due_time": due_time,
-            "is_completed": is_completed,
-            "description": item.get("description") or item.get("desc") or "",
-        }
+        # 2. 访问作业页面
+        work_page_url = (
+            f"{self.HOST_CP}/work/getAllWork"
+            f"?classId={course['clazzid']}"
+            f"&courseId={course['courseid']}"
+            f"&isdisplaytable=2&mooc=1"
+            f"&ut=s&enc={enc}"
+            f"&cpi={course['cpi']}"
+            f"&openc={openc}"
+        )
 
-    def _parse_due_time(self, text: str) -> Optional[datetime]:
-        patterns = [
-            r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s*(\d{1,2})[:：]?(\d{2})",
-            r"(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[:：]?(\d{2})",
-            r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})",
-            r"(\d{4})年(\d{1,2})月(\d{1,2})日",
-        ]
-        for pat in patterns:
-            m = re.search(pat, text)
-            if m:
-                try:
-                    parts = [int(m.group(i)) for i in range(1, 6) if m.group(i)]
-                    y, mo, d = parts[0], parts[1], parts[2]
-                    h = parts[3] if len(parts) > 3 else 23
-                    mi = parts[4] if len(parts) > 4 else 59
-                    return datetime(y, mo, d, h, mi)
-                except (ValueError, IndexError):
+        work_resp = await self.client.get(work_page_url)
+
+        if work_resp.status_code != 200:
+            return results
+
+        # 3. 解析作业HTML
+        results = self._parse_work_page(work_resp.text, course["name"])
+        if results:
+            logger.info(f"    ✅ {len(results)} 个作业")
+
+        return results
+
+    def _parse_work_page(self, html: str, course_name: str) -> List[Dict]:
+        """从作业页面HTML中解析作业列表"""
+        soup = BeautifulSoup(html, "lxml")
+        text = soup.get_text("\n", strip=True)
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+        assignments = []
+        for i, line in enumerate(lines):
+            if line == "开始时间：" and i > 0 and i + 5 < len(lines):
+                title = lines[i - 1]
+                if not title or len(title) > 50 or len(title) < 2:
                     continue
-        return None
+                if title in ("我的作业", "待批作业", "首页", "作业", "考试"):
+                    continue
+
+                start_time = lines[i + 1]
+                due_time = lines[i + 3]
+                status = lines[i + 5]
+
+                due_dt = None
+                for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                    try:
+                        due_dt = datetime.strptime(due_time, fmt)
+                        break
+                    except ValueError:
+                        pass
+
+                is_completed = status in ("已提交", "已完成", "已批阅", "待批阅")
+
+                uid = hashlib.md5(
+                    f"{course_name}_{title}_{due_time}".encode()
+                ).hexdigest()[:16]
+
+                assignments.append({
+                    "remote_id": uid,
+                    "title": title[:200],
+                    "course_name": course_name,
+                    "due_time": due_dt,
+                    "is_completed": is_completed,
+                    "description": f"状态: {status}",
+                })
+
+        return assignments
 
     # ───── 外部接口 ─────
 

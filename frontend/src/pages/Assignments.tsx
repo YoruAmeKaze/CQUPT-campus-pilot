@@ -34,11 +34,8 @@ interface DataSource {
   type: string
   name: string
   enabled: boolean
-  credentials: {
-    username?: string
-    password?: string
-  }
-  last_sync: string
+  username: string
+  last_sync: string | null
   sync_status: string
 }
 
@@ -50,19 +47,11 @@ const DATA_SOURCE_TYPES = [
 export default function Assignments() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
-  const [sources, setSources] = useState<DataSource[]>([
-    {
-      id: 1,
-      type: 'chaoxing',
-      name: '学习通',
-      enabled: true,
-      credentials: { username: '' },
-      last_sync: '2026-05-25 11:00',
-      sync_status: 'ok',
-    },
-  ])
+  const [sources, setSources] = useState<DataSource[]>([])
+  const [sourcesLoading, setSourcesLoading] = useState(true)
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [showAddSource, setShowAddSource] = useState(false)
+  const [addSourceError, setAddSourceError] = useState('')
   const [newSource, setNewSource] = useState({
     type: '',
     username: '',
@@ -71,7 +60,23 @@ export default function Assignments() {
 
   useEffect(() => {
     fetchAssignments()
+    fetchSources()
   }, [])
+
+  const fetchSources = async () => {
+    try {
+      setSourcesLoading(true)
+      const res = await fetch('/api/data-sources')
+      if (res.ok) {
+        const data = await res.json()
+        setSources(data || [])
+      }
+    } catch (error) {
+      console.error('获取数据源失败:', error)
+    } finally {
+      setSourcesLoading(false)
+    }
+  }
 
   const fetchAssignments = async () => {
     try {
@@ -99,6 +104,18 @@ export default function Assignments() {
     }
   }
 
+  const handleDelete = async (id: number) => {
+    if (!confirm('确定要删除这个作业吗？')) return
+    try {
+      const res = await fetch(`/api/assignments/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        fetchAssignments()
+      }
+    } catch (error) {
+      console.error('删除作业失败:', error)
+    }
+  }
+
   const handleSync = async () => {
     try {
       const res = await fetch('/api/assignments/sync', { method: 'POST' })
@@ -110,24 +127,35 @@ export default function Assignments() {
     }
   }
 
-  const handleAddSource = () => {
-    if (newSource.type && newSource.username) {
-      const sourceType = DATA_SOURCE_TYPES.find(t => t.value === newSource.type)
-      const newItem: DataSource = {
-        id: Date.now(),
-        type: newSource.type,
-        name: sourceType?.label || newSource.type,
-        enabled: true,
-        credentials: {
-          username: newSource.username,
-          password: newSource.password,
-        },
-        last_sync: '-',
-        sync_status: 'pending',
+  const handleAddSource = async () => {
+    setAddSourceError('')
+    if (!newSource.type) {
+      setAddSourceError('请选择平台类型')
+      return
+    }
+    if (!newSource.username) {
+      setAddSourceError('请输入账号')
+      return
+    }
+    const typeLabel = DATA_SOURCE_TYPES.find(t => t.value === newSource.type)?.label || newSource.type
+    try {
+      const res = await fetch('/api/data-sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newSource, name: typeLabel }),
+      })
+      if (res.ok) {
+        fetchSources()
+        setShowAddSource(false)
+        setAddSourceError('')
+        setNewSource({ type: '', username: '', password: '' })
+      } else {
+        const data = await res.json()
+        setAddSourceError(data.detail || '添加失败')
       }
-      setSources([...sources, newItem])
-      setShowAddSource(false)
-      setNewSource({ type: '', username: '', password: '' })
+    } catch (error) {
+      setAddSourceError('网络错误，请重试')
+      console.error('添加数据源失败:', error)
     }
   }
 
@@ -137,8 +165,15 @@ export default function Assignments() {
     ))
   }
 
-  const handleDeleteSource = (id: number) => {
-    setSources(sources.filter(s => s.id !== id))
+  const handleDeleteSource = async (id: number) => {
+    try {
+      const res = await fetch(`/api/data-sources/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        fetchSources()
+      }
+    } catch (error) {
+      console.error('删除数据源失败:', error)
+    }
   }
 
   const formatDate = (dateStr: string) => {
@@ -220,11 +255,11 @@ export default function Assignments() {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <Label className="text-xs">账号</Label>
-                            <p className="text-muted-foreground">{source.credentials.username || '-'}</p>
+                            <p className="text-muted-foreground">{source.username || '-'}</p>
                           </div>
                           <div>
                             <Label className="text-xs">最后同步</Label>
-                            <p className="text-muted-foreground">{source.last_sync}</p>
+                            <p className="text-muted-foreground">{source.last_sync || '-'}</p>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -308,6 +343,15 @@ export default function Assignments() {
                         </span>
                       </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(assignment.id)}
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      title="删除"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -336,6 +380,15 @@ export default function Assignments() {
                         {assignment.course_name}
                       </div>
                     </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(assignment.id)}
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      title="删除"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -344,7 +397,13 @@ export default function Assignments() {
         )}
       </div>
 
-      <Dialog open={showAddSource} onOpenChange={setShowAddSource}>
+      <Dialog open={showAddSource} onOpenChange={(open) => {
+        setShowAddSource(open)
+        if (!open) {
+          setAddSourceError('')
+          setNewSource({ type: '', username: '', password: '' })
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>添加数据源</DialogTitle>
@@ -385,6 +444,9 @@ export default function Assignments() {
             <Button onClick={handleAddSource} className="w-full">
               添加数据源
             </Button>
+            {addSourceError && (
+              <p className="text-sm text-red-500 text-center">{addSourceError}</p>
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -88,7 +88,6 @@ export default function Settings() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          student_id: studentId,
           term_start_date: termStartDate,
           bark_key: barkKey,
         }),
@@ -194,8 +193,9 @@ export default function Settings() {
                   <Input
                     id="studentId"
                     value={studentId}
-                    onChange={(e) => setStudentId(e.target.value)}
-                    placeholder="请输入学号"
+                    readOnly
+                    className="bg-muted/50 cursor-not-allowed"
+                    title="学号在 .env 文件中配置"
                   />
                 </div>
                 <div className="space-y-2">
@@ -232,7 +232,7 @@ export default function Settings() {
                   <Label>当前周次</Label>
                   <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
                     <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">第 15 周</span>
+                    <span className="font-medium">第 {Math.max(1, Math.floor((new Date().getTime() - new Date(termStartDate).getTime()) / (1000 * 60 * 60 * 24 * 7)) + 1)} 周</span>
                   </div>
                 </div>
               </div>
@@ -429,8 +429,8 @@ export default function Settings() {
                   <span className="font-medium">v2.0.0</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">开发团队</span>
-                  <span className="font-medium">CQUPT</span>
+                  <span className="text-muted-foreground">开发作者</span>
+                  <span className="font-medium">Kazever</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">更新日期</span>
