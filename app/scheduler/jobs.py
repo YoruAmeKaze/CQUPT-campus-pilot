@@ -178,7 +178,20 @@ async def sync_assignments_periodically():
             else:
                 logger.info("⏳ 学习通未抓取到新作业")
 
-            # TODO: 同步数你最灵作业
+            # 同步数你最灵作业
+            from app.crawlers.smartestu_crawler import SmartestuCrawler
+            from app.services.config_store import ConfigStoreService
+            store = ConfigStoreService(db, settings.fernet_key)
+            sm_config = await store.get_data_source(user.id, "smartestu")
+            sm_student_id = (sm_config or {}).get("student_id", "") or settings.smartestu_student_id
+            sm_password = (sm_config or {}).get("password", "") or settings.smartestu_password
+
+            if sm_student_id and sm_password:
+                smartestu = SmartestuCrawler(student_id=sm_student_id, password=sm_password)
+                sm_assignments = await smartestu.crawl_and_parse()
+                if sm_assignments:
+                    sm_new = await assignment_service.save_assignments(user.id, sm_assignments)
+                    logger.info(f"✅ 数你最灵作业同步完成，新增 {sm_new} 条")
 
     except Exception as e:
         logger.error(f"❌ 定期作业同步任务异常: {e}", exc_info=True)

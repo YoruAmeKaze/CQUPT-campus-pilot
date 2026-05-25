@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import {
   LayoutDashboard,
   Calendar,
@@ -18,7 +19,21 @@ const navItems = [
   { to: '/settings', icon: Settings, label: '配置' },
 ]
 
+function computeWeek(termStartDate: string): number {
+  if (!termStartDate) return 0
+  const diff = new Date().getTime() - new Date(termStartDate).getTime()
+  return Math.max(1, Math.floor(diff / (1000 * 60 * 60 * 24 * 7)) + 1)
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const [currentWeek, setCurrentWeek] = useState(15)
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then(r => r.json())
+      .then(config => setCurrentWeek(computeWeek(config.term_start_date)))
+      .catch(() => {})
+  }, [])
   return (
     <div className="flex h-screen bg-background">
       {/* 侧边栏 - 始终显示 */}
@@ -76,7 +91,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 month: 'long', 
                 day: 'numeric' 
               })}</p>
-              <p className="text-xs text-muted-foreground">第 15 周 • 夏季学期</p>
+              <p className="text-xs text-muted-foreground">第 {currentWeek} 周 • 夏季学期</p>
             </div>
           </div>
         </header>

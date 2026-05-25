@@ -137,3 +137,14 @@ class Todo(Base):
 
     # 关系
     user = relationship("User", back_populates="todos")
+
+
+class SystemConfig(Base):
+    """系统配置键值存储（替代 .env 中的业务配置）"""
+    __tablename__ = "system_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(100), unique=True, nullable=False, index=True)
+    value = Column(Text, nullable=True)
+    description = Column(String(200), nullable=True)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

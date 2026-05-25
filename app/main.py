@@ -28,6 +28,18 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ 数据库初始化完成")
 
+    # 迁移 .env 中的业务配置到数据库（仅首次运行）
+    try:
+        from app.services.config_store import ConfigStoreService
+        from app.db.session import async_session
+        async with async_session() as db:
+            store = ConfigStoreService(db, settings.fernet_key)
+            migrated = await store.migrate_from_env(settings.model_dump())
+            if migrated:
+                logger.info(f"✅ 已迁移 {migrated} 项配置从 .env 到数据库")
+    except Exception as e:
+        logger.warning(f"⚠️ 配置迁移跳过: {e}")
+
     # 注册并启动定时任务
     register_tasks(scheduler)
     scheduler.start()
@@ -93,12 +105,14 @@ from app.api.todos import router as todos_router
 from app.api.assignments import router as assignments_router
 from app.api.config import router as config_router
 from app.api.notification import router as notification_router
+from app.api.data_sources import router as data_sources_router
 
 app.include_router(courses_router)
 app.include_router(todos_router)
 app.include_router(assignments_router)
 app.include_router(config_router)
 app.include_router(notification_router)
+app.include_router(data_sources_router)
 
 
 if __name__ == "__main__":

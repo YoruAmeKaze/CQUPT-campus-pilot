@@ -187,6 +187,36 @@ class AssignmentService:
         await self.db.commit()
         return True
 
+    async def delete_assignment(
+        self,
+        assignment_id: int,
+        user_id: int,
+    ) -> bool:
+        """
+        删除指定作业
+        
+        Args:
+            assignment_id: 作业ID
+            user_id: 用户ID
+            
+        Returns:
+            bool: 是否成功
+        """
+        query = (
+            select(Assignment)
+            .where(Assignment.id == assignment_id)
+            .where(Assignment.user_id == user_id)
+        )
+        result = await self.db.execute(query)
+        assignment = result.scalar_one_or_none()
+
+        if not assignment:
+            return False
+
+        await self.db.delete(assignment)
+        await self.db.commit()
+        return True
+
     async def delete_old_completed_assignments(self, user_id: int, days: int = 30) -> int:
         """
         删除已完成且超过指定天数的作业

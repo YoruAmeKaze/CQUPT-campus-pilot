@@ -115,26 +115,86 @@ async def get_upcoming_assignments(
 
 @router.post("/sync")
 async def sync_assignments(db: AsyncSession = Depends(get_db)):
-    """同步作业（先同步学习通，后续支持多数据源）"""
+    """同步作业（从数据库读配置）"""
     user_id = await get_or_create_default_user(db)
     service = AssignmentService(db)
-    
+
     logger.info("🔄 开始同步作业...")
-    
-    # 1. 同步学习通
-    chaoxing = ChaoxingCrawler()
-    assignments = await chaoxing.crawl_and_parse()
-    
-    new_count = 0
-    if assignments:
-        new_count = await service.save_assignments(user_id, assignments)
-    
-    # TODO: 同步数你最灵等其他数据源
-    
+
+    from app.services.config_store import ConfigStoreService
+    from app.config import settings
+    from app.db.models import DataSource
+    from sqlalchemy import select
+    from datetime import datetime
+
+    store = ConfigStoreService(db, settings.fernet_key)
+    total_new = 0
+    results = []
+
+    async def _sync_source(source_type: str, label: str):
+        nonlocal total_new
+        result_query = await db.execute(
+            select(DataSource).where(
+                DataSource.user_id == user_id,
+                DataSource.type == source_type,
+            )
+        )
+        ds = result_query.scalar_one_or_none()
+        if not ds:
+            logger.info(f"  ⏭️ {label} 未配置")
+            return
+
+        try:
+            import json
+            creds = json.loads(ds.credentials) if ds.credentials else {}
+            assignments = []
+
+            if source_type == "chaoxing":
+                username = creds.get("username", "") or settings.chaoxing_username
+                password = creds.get("password", "") or settings.chaoxing_password
+                if not username or not password:
+                    raise Exception("未配置学习通账号密码")
+                from app.crawlers.chaoxing_crawler import ChaoxingCrawler
+                async with ChaoxingCrawler(username=username, password=password) as crawler:
+                    assignments = await crawler.crawl_and_parse()
+            elif source_type == "smartestu":
+                student_id = creds.get("student_id", "") or settings.smartestu_student_id
+                password = creds.get("password", "") or settings.smartestu_password
+                if not student_id or not password:
+                    raise Exception("未配置数你最灵账号密码")
+                from app.crawlers.smartestu_crawler import SmartestuCrawler
+                async with SmartestuCrawler(student_id=student_id, password=password) as crawler:
+                    assignments = await crawler.crawl_and_parse()
+            else:
+                return
+
+            new_count = 0
+            if assignments:
+                new_count = await service.save_assignments(user_id, assignments, source_id=ds.id)
+                total_new += new_count
+
+            ds.last_sync = datetime.now()
+            ds.sync_status = "ok"
+            ds.error_message = None
+            results.append({"source": label, "status": "ok", "new": new_count})
+            logger.info(f"  ✅ {label} 同步完成，新增 {new_count} 条")
+
+        except Exception as e:
+            ds.sync_status = "error"
+            ds.error_message = str(e)[:500]
+            results.append({"source": label, "status": "error", "error": str(e)})
+            logger.error(f"  ❌ {label} 同步失败: {e}")
+
+        await db.commit()
+
+    await _sync_source("chaoxing", "学习通")
+    await _sync_source("smartestu", "数你最灵")
+
     return {
         "success": True,
         "message": "同步完成",
-        "new_count": new_count,
+        "new_count": total_new,
+        "results": results,
     }
 
 
@@ -154,4 +214,23 @@ async def mark_completed(
     return {
         "success": True,
         "message": "已标记为完成",
+    }
+
+
+@router.delete("/{assignment_id}")
+async def delete_assignment(
+    assignment_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """删除作业"""
+    user_id = await get_or_create_default_user(db)
+    service = AssignmentService(db)
+    success = await service.delete_assignment(assignment_id, user_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="作业不存在")
+    
+    return {
+        "success": True,
+        "message": "已删除",
     }
