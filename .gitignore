@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 虚拟环境
+vvm/
+.venv/
+venv/
+
+# 数据库
+*.db
+data/
+
+# 环境配置
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 调试文件
+test_*.py
+debug_*.py
+check_*.py
+debug_*.html
+debug_*.js
+
+# 前端构建
+node_modules/
+frontend/dist/
+frontend/.next/
+
+# 日志
+*.log
+logs/
+
+# Windows 保留名
+nul
+CON
+PRN
+AUX
+COM1
+COM2
+LPT1
+LPT2
