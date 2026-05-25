@@ -1,0 +1,37 @@
+# 基础依赖
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-dotenv==1.0.0
+pydantic==2.5.2
+pydantic-settings==2.1.0
+
+# 数据库
+sqlalchemy[asyncio]==2.0.23
+aiosqlite==0.19.0
+alembic==1.13.0
+
+# HTTP 客户端
+httpx[http2]==0.25.2
+
+# HTML 解析
+beautifulsoup4==4.12.2
+lxml==5.1.0
+
+# 浏览器自动化（学习通滑块）
+playwright==1.40.0
+ddddocr>=1.6.0
+
+# 企业微信
+wechatpy[crypto]==1.8.18
+
+# 任务调度
+apscheduler==3.10.4
+
+# 加密
+cryptography==41.0.7
+
+# 日历同步（可选，Python 3.13 暂不支持）
+# caldav==1.3
+
+# LLM
+openai==1.8.0

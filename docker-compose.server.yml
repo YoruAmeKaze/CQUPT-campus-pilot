@@ -1,0 +1,23 @@
+# 服务器模式 - 追加 easyconnect VPN 容器
+# 使用方式：docker compose -f docker-compose.yml -f docker-compose.server.yml up -d
+
+services:
+  easyconnect:
+    image: hagb/docker-easyconnect:cli
+    restart: unless-stopped
+    devices:
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    environment:
+      EC_VER: "7.6.3"
+      CLI_OPTS: "-d ${VPN_HOST} -u ${VPN_USERNAME} -p ${VPN_PASSWORD}"
+    volumes:
+      - easyconnect-data:/root
+
+  backend:
+    network_mode: "service:easyconnect"
+    ports: []  # 移除端口映射，通过 easyconnect 暴露
+
+volumes:
+  easyconnect-data:
