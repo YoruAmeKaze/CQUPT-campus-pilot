@@ -76,6 +76,12 @@ def _match_tool(question: str) -> Optional[str]:
     if any(kw in q for kw in view_todo):
         return "get_todos"
     
+    # ─── 空教室查询 ───
+    empty_room = ["空教室", "空闲教室", "哪里可以自习", "找教室",
+                  "有没有空教室", "教室有空", "没课教室"]
+    if any(kw in q for kw in empty_room):
+        return "query_empty_rooms"
+    
     # ─── 未匹配到预定义工具，返回 None → 降级到 Text-to-SQL 或聊天 ───
     return None
 
