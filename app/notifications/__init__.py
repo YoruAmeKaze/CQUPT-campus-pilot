@@ -3,5 +3,6 @@
 """
 
 from app.notifications.bark_notifier import BarkNotifier
+from app.notifications.feishu_notifier import FeishuNotifier
 
-__all__ = ["BarkNotifier"]
+__all__ = ["BarkNotifier", "FeishuNotifier"]

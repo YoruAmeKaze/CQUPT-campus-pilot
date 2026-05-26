@@ -10,6 +10,8 @@ interface Todo {
   priority: 'low' | 'normal' | 'high'
   is_completed: boolean
   source: string
+  reminder_enabled: boolean
+  reminder_sent: boolean
   created_at: string
 }
 
@@ -23,6 +25,7 @@ export default function Todos() {
     description: '',
     due_time: '',
     priority: 'normal' as 'low' | 'normal' | 'high',
+    reminder_enabled: false,
   })
   const [loading, setLoading] = useState(true)
 
@@ -61,6 +64,7 @@ export default function Todos() {
         due_time: newTodo.due_time || null,
         priority: newTodo.priority,
         source: 'manual',
+        reminder_enabled: newTodo.reminder_enabled,
       }
       const res = await fetch('/api/todos', {
         method: 'POST',
@@ -70,7 +74,7 @@ export default function Todos() {
       const data = await res.json()
       if (data.success) {
         setShowAddModal(false)
-        setNewTodo({ title: '', description: '', due_time: '', priority: 'normal' })
+        setNewTodo({ title: '', description: '', due_time: '', priority: 'normal', reminder_enabled: false })
         fetchTodos()
       }
     } catch (err) {
@@ -166,7 +170,7 @@ export default function Todos() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">待办事项</h1>
           <p className="text-muted-foreground">
-            管理您的待办事项，支持通过企业微信自然语言创建
+            管理您的待办事项，支持通过飞书自然语言创建
           </p>
         </div>
 
@@ -254,7 +258,7 @@ export default function Todos() {
                 <div
                   key={todo.id}
                   className={`flex items-center justify-between p-4 rounded-lg border ${
-                    todo.is_completed ? 'bg-gray-50 border-gray-200' : 'bg-card border-border'
+                    todo.is_completed ? 'bg-muted/30 border-border/50' : 'bg-card border-border'
                   }`}
                 >
                   <div className="flex items-start gap-4">
@@ -300,6 +304,11 @@ export default function Todos() {
                         <span className="text-xs text-muted-foreground">
                           {todo.source === 'llm' ? '🤖 来自 LLM' : '✏️ 手动创建'}
                         </span>
+                        {todo.reminder_enabled && (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-500" title={todo.reminder_sent ? '提醒已发送' : '提醒已开启'}>
+                            {todo.reminder_sent ? '🔔 已提醒' : '🔕 提醒中'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -377,6 +386,18 @@ export default function Todos() {
                     <option value="high">高</option>
                   </select>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50">
+                <input
+                  type="checkbox"
+                  id="reminder_enabled"
+                  checked={newTodo.reminder_enabled}
+                  onChange={(e) => setNewTodo({ ...newTodo, reminder_enabled: e.target.checked })}
+                  className="rounded border-gray-300"
+                />
+                <label htmlFor="reminder_enabled" className="text-sm cursor-pointer">
+                  到期前 1 小时推送提醒（需配置 Bark 或飞书）
+                </label>
               </div>
               <div className="flex gap-3 pt-2">
                 <button

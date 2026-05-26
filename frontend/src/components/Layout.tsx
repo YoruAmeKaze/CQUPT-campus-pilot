@@ -8,6 +8,7 @@ import {
   GraduationCap,
   CheckSquare,
   Bell,
+  Clock,
 } from 'lucide-react'
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/assignments', icon: FileText, label: '作业' },
   { to: '/todos', icon: CheckSquare, label: '待办' },
   { to: '/notifications', icon: Bell, label: '通知' },
+  { to: '/schedules', icon: Clock, label: '定时' },
   { to: '/settings', icon: Settings, label: '配置' },
 ]
 

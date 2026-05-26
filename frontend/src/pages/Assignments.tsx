@@ -110,17 +110,23 @@ export default function Assignments() {
       const res = await fetch(`/api/assignments/${id}`, { method: 'DELETE' })
       if (res.ok) {
         fetchAssignments()
+      } else {
+        const errData = await res.json().catch(() => null)
+        alert('删除失败: ' + (errData?.detail || '未知错误'))
       }
     } catch (error) {
       console.error('删除作业失败:', error)
+      alert('网络错误，请重试')
     }
   }
 
   const handleSync = async () => {
     try {
       const res = await fetch('/api/assignments/sync', { method: 'POST' })
+      const data = await res.json()
       if (res.ok) {
         fetchAssignments()
+        fetchSources()
       }
     } catch (error) {
       console.error('同步作业失败:', error)

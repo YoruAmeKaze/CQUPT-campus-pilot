@@ -16,13 +16,6 @@ class Settings(BaseSettings):
     student_id: str = ""
     deploy_mode: str = "laptop"  # laptop 或 server
 
-    # ===== 企业微信配置 =====
-    wxwork_corp_id: str = ""
-    wxwork_agent_id: str = ""
-    wxwork_agent_secret: str = ""
-    wxwork_token: str = ""
-    wxwork_encoding_aes_key: str = ""
-
     # ===== 学习通配置 =====
     chaoxing_username: str = ""  # 学习通账号（手机号）
     chaoxing_password: str = ""
@@ -31,18 +24,25 @@ class Settings(BaseSettings):
     # ===== 数你最灵配置 =====
     smartestu_student_id: str = ""
     smartestu_password: str = ""
-    smartestu_school_id: str = ""
+    smartestu_school_id: str = "cqupt"
 
     # ===== DeepSeek 配置 =====
     deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
+
+    # ===== 飞书应用配置 =====
+    feishu_app_id: str = ""
+    feishu_app_secret: str = ""
+
+    # ===== 公网服务器（SSH隧道）=====
+    tunnel_server_host: str = "47.76.188.165"
+    tunnel_server_user: str = "root"
+    tunnel_remote_port: int = 9999
+    tunnel_local_port: int = 8000
+    tunnel_key_path: str = ""
 
     # ===== 加密密钥 =====
     fernet_key: Optional[str] = None
-
-    # ===== iCloud 日历（可选）=====
-    caldav_url: Optional[str] = None
-    caldav_username: Optional[str] = None
-    caldav_password: Optional[str] = None
 
     # ===== VPN（仅 server 模式）=====
     vpn_host: str = "vpn.cqupt.edu.cn"
@@ -53,12 +53,15 @@ class Settings(BaseSettings):
     tz: str = "Asia/Shanghai"
     database_url: str = "sqlite+aiosqlite:///data/campus.db"
     frontend_url: str = "http://localhost:3000"
-    
+
     # ===== 校历配置 =====
-    term_start_date: str = "2026-03-02"  # 第一周周一的日期
+    term_start_date: str = "2026-03-02"
 
     # ===== Bark 推送配置 =====
-    bark_key: str = ""  # Bark Key，用于 iOS 推送通知
+    bark_key: str = ""
+
+    # ===== 飞书机器人配置 =====
+    feishu_webhook_url: str = ""
 
     class Config:
         env_file = ".env"
@@ -76,15 +79,6 @@ class Settings(BaseSettings):
     @property
     def is_server_mode(self) -> bool:
         return self.deploy_mode.lower() == "server"
-
-    @property
-    def is_wxwork_configured(self) -> bool:
-        """检查企业微信是否已配置"""
-        return all([
-            self.wxwork_corp_id,
-            self.wxwork_agent_id,
-            self.wxwork_agent_secret,
-        ])
 
 
 # 全局配置实例
