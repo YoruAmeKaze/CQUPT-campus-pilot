@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Bell,
   Clock,
+  DoorOpen,
 } from 'lucide-react'
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/courses', icon: Calendar, label: '课表' },
   { to: '/assignments', icon: FileText, label: '作业' },
   { to: '/todos', icon: CheckSquare, label: '待办' },
+  { to: '/rooms', icon: DoorOpen, label: '空教室' },
   { to: '/notifications', icon: Bell, label: '通知' },
   { to: '/schedules', icon: Clock, label: '定时' },
   { to: '/settings', icon: Settings, label: '配置' },

@@ -154,6 +154,7 @@ from app.api.data_sources import router as data_sources_router
 from app.api.feishu_app import router as feishu_app_router
 from app.api.llm import router as llm_router
 from app.api.custom_reminders import router as custom_reminders_router
+from app.api.rooms import router as rooms_router
 
 app.include_router(courses_router)
 app.include_router(todos_router)
@@ -164,6 +165,7 @@ app.include_router(data_sources_router)
 app.include_router(feishu_app_router)
 app.include_router(llm_router)
 app.include_router(custom_reminders_router)
+app.include_router(rooms_router)
 
 
 if __name__ == "__main__":

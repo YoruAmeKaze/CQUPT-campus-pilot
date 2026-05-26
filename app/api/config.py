@@ -14,7 +14,7 @@ _config_fields = [
     "term_start_date", "bark_key", "feishu_webhook_url",
     "student_id", "chaoxing_username", "chaoxing_password",
     "smartestu_student_id", "smartestu_password",
-    "deepseek_api_key", "deepseek_model",
+    "deepseek_api_key", "deepseek_model", "llm_base_url",
     "feishu_app_id", "feishu_app_secret",
     "tunnel_server_host", "tunnel_server_user",
     "tunnel_remote_port", "tunnel_local_port", "tunnel_key_path",
@@ -36,6 +36,7 @@ class ConfigResponse(BaseModel):
     smartestu_password: str = ""
     deepseek_api_key: str = ""
     deepseek_model: str = ""
+    llm_base_url: str = ""
     feishu_app_id: str = ""
     feishu_app_secret: str = ""
     tunnel_server_host: str = ""
@@ -62,6 +63,7 @@ class ConfigUpdate(BaseModel):
     smartestu_password: Optional[str] = None
     deepseek_api_key: Optional[str] = None
     deepseek_model: Optional[str] = None
+    llm_base_url: Optional[str] = None
     feishu_app_id: Optional[str] = None
     feishu_app_secret: Optional[str] = None
     tunnel_server_host: Optional[str] = None

@@ -20,35 +20,66 @@ from app.llm.tools import TOOLS, execute_tool
 
 logger = logging.getLogger(__name__)
 
-def _is_data_query(question: str) -> str:
+def _match_tool(question: str) -> Optional[str]:
     """
-    判断用户消息类型：
-    - "query" → 需要查询数据库
-    - "create_todo" → 需要创建待办
-    - "chat" → 普通聊天
+    尝试将用户问题匹配到预定义工具。
+    
+    优先级：预定义工具（快、稳、省） → Text-to-SQL（灵活兜底）
+    
+    返回工具名称，或 None 表示无法匹配（走 Text-to-SQL 或聊天）
     """
     q = question.lower().strip()
     
-    # 创建待办
+    # ─── 创建待办 ───
     create_keywords = ["添加待办", "创建待办", "新增待办", "添加代办", "创建代办",
                        "帮我记", "提醒我", "别忘了"]
     if any(kw in q for kw in create_keywords):
         return "create_todo"
     
-    # 数据查询
-    query_keywords = [
-        "课表", "课程", "上课", "几点", "教室",
-        "作业", "截止", "提交",
-        "待办", "todo", "任务", "事项",
-        "统计", "多少", "有几个", "有哪些", "查询", "看看", "查看",
-        "星期", "周几", "哪天",
-    ]
-    if any(kw in q for kw in query_keywords):
-        return "query"
+    # ─── 今日课表 ───
+    today_course = ["今天有什么课", "今天课表", "今天课程", "今天上课",
+                    "今日课表", "今日课程", "今日上课"]
+    if any(kw in q for kw in today_course):
+        return "get_today_courses"
     
-    return "chat"
+    # ─── 明日课表 ───
+    tomorrow_course = ["明天有什么课", "明天课表", "明天课程", "明天上课",
+                       "明日课表", "明日课程", "明日上课"]
+    if any(kw in q for kw in tomorrow_course):
+        return "get_tomorrow_courses"
+    
+    # ─── 本周课表 ───
+    week_course = ["本周课表", "本周课程", "这周课表", "这周课程",
+                   "这周有什么课", "本周有什么课"]
+    if any(kw in q for kw in week_course):
+        return "get_this_week_courses"
+    
+    # ─── 当前周次 ───
+    week_number = ["第几周", "当前周", "现在是第", "多少周", "几周了"]
+    if any(kw in q for kw in week_number):
+        return "get_current_week_number"
+    
+    # ─── 待完成作业 ───
+    pending_asmt = ["待完成作业", "没完成作业", "未完成作业", "有哪些作业",
+                    "作业有哪些", "查看作业", "作业列表", "剩余作业",
+                    "即将截止作业", "快要截止作业"]
+    if any(kw in q for kw in pending_asmt):
+        return "get_pending_assignments"
+    
+    # ─── 过期作业 ───
+    if "过期" in q and "作业" in q:
+        return "get_overdue_assignments"
+    
+    # ─── 查看待办 ───
+    view_todo = ["查看待办", "查看todo", "我的待办", "我的todo",
+                 "待办列表", "有哪些待办", "待办事项", "任务列表"]
+    if any(kw in q for kw in view_todo):
+        return "get_todos"
+    
+    # ─── 未匹配到预定义工具，返回 None → 降级到 Text-to-SQL 或聊天 ───
+    return None
 
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+DEEPSEEK_BASE_URL = settings.llm_base_url  # 从配置读取，默认 https://api.deepseek.com
 
 SYSTEM_PROMPT = """你是 CampusPilot 校园助手，运行在重庆邮电大学学生的个人学业管理系统中。
 
@@ -335,20 +366,48 @@ async def chat_or_reply(
     db: AsyncSession,
 ) -> str:
     """
-    智能判断：如果是查询就走 Text-to-SQL，否则正常聊天
+    智能判断与回复 - 优先级策略
 
-    同时支持创建待办（使用 execute_tool）
+    1. 预定义工具匹配 → 直接执行（快、稳、省）
+    2. 预定义未匹配 + 含查询关键词 → Text-to-SQL（灵活兜底）
+    3. 普通聊天 → chat_completion()
     """
-    msg_type = _is_data_query(user_message)
+    tool_name = _match_tool(user_message)
 
-    if msg_type == "create_todo":
+    if tool_name == "create_todo":
         from app.llm.tools import execute_tool
         result = await execute_tool("create_todo", {"title": user_message}, db)
         return result
 
-    if msg_type == "query":
+    if tool_name == "get_todos":
+        from app.llm.tools import execute_tool
+        result = await execute_tool("get_todos", {}, db)
+        return result
+
+    # ─── 优先：用预定义工具（1次数据库查询，极快）───
+    if tool_name:
+        logger.info(f"⚡ 命中预定义工具: {tool_name}")
+        from app.llm.tools import execute_tool
+        result = await execute_tool(tool_name, {}, db)
+        return result
+
+    # ─── 兜底：判断是否是数据查询 → Text-to-SQL ───
+    query_keywords = [
+        "课表", "课程", "上课", "几点", "教室",
+        "作业", "截止", "提交",
+        "待办", "todo", "任务", "事项",
+        "统计", "多少", "有几个", "有哪些", "查询", "看看", "查看",
+        "星期", "周几", "哪天", "明后天", "后天", "前天", "大后天",
+        "这周", "下周", "上周",
+    ]
+    q = user_message.lower().strip()
+    is_query = any(kw in q for kw in query_keywords)
+
+    if is_query:
+        logger.info("🔍 未命中预定义工具，降级到 Text-to-SQL")
         return await chat_text_to_sql(user_message, db)
 
+    # ─── 普通聊天 ───
     return await chat_completion(
         messages=[{"role": "user", "content": user_message}],
     )

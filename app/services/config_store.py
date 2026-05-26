@@ -27,6 +27,7 @@ SYSTEM_KEYS = {
     "smartestu_password": "数你最灵密码",
     "deepseek_api_key": "DeepSeek API Key",
     "deepseek_model": "DeepSeek 模型 (deepseek-chat / deepseek-reasoner)",
+    "llm_base_url": "LLM API 地址 (默认 https://api.deepseek.com，Ollama 用 http://localhost:11434/v1)",
     "feishu_app_id": "飞书应用 App ID",
     "feishu_app_secret": "飞书应用 App Secret",
     "tunnel_server_host": "公网服务器 IP",
