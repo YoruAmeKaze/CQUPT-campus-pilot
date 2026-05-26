@@ -261,7 +261,7 @@ export default function Assignments() {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <Label className="text-xs">账号</Label>
-                            <p className="text-muted-foreground">{source.username || '-'}</p>
+                            <p className="text-muted-foreground">{source.username || '(未设置)'}</p>
                           </div>
                           <div>
                             <Label className="text-xs">最后同步</Label>

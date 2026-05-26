@@ -26,9 +26,10 @@ class Settings(BaseSettings):
     smartestu_password: str = ""
     smartestu_school_id: str = "cqupt"
 
-    # ===== DeepSeek 配置 =====
+    # ===== DeepSeek / LLM 配置 =====
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek-chat"
+    llm_base_url: str = "https://api.deepseek.com"
 
     # ===== 飞书应用配置 =====
     feishu_app_id: str = ""

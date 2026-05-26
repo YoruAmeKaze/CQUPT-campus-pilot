@@ -7,6 +7,7 @@ import Todos from './pages/Todos'
 import Notifications from './pages/Notifications'
 import Schedules from './pages/Schedules'
 import Settings from './pages/Settings'
+import Rooms from './pages/Rooms'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/courses" element={<Courses />} />
           <Route path="/assignments" element={<Assignments />} />
           <Route path="/todos" element={<Todos />} />
+          <Route path="/rooms" element={<Rooms />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/schedules" element={<Schedules />} />
           <Route path="/settings" element={<Settings />} />

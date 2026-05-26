@@ -324,7 +324,7 @@ export default function Todos() {
                     )}
                     <button
                       onClick={() => handleDeleteTodo(todo.id)}
-                      className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-red-600 transition-colors"
+                      className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-destructive transition-colors"
                       title="删除"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -349,7 +349,7 @@ export default function Todos() {
                   type="text"
                   value={newTodo.title}
                   onChange={(e) => setNewTodo({ ...newTodo, title: e.target.value })}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="输入待办事项标题"
                   required
                 />
@@ -359,7 +359,7 @@ export default function Todos() {
                 <textarea
                   value={newTodo.description}
                   onChange={(e) => setNewTodo({ ...newTodo, description: e.target.value })}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                   placeholder="输入详细描述（可选）"
                   rows={3}
                 />
@@ -371,7 +371,7 @@ export default function Todos() {
                     type="datetime-local"
                     value={newTodo.due_time}
                     onChange={(e) => setNewTodo({ ...newTodo, due_time: e.target.value })}
-                    className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
                 <div>
@@ -379,7 +379,7 @@ export default function Todos() {
                   <select
                     value={newTodo.priority}
                     onChange={(e) => setNewTodo({ ...newTodo, priority: e.target.value as any })}
-                    className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary"
                   >
                     <option value="low">低</option>
                     <option value="normal">普通</option>

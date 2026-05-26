@@ -151,7 +151,7 @@ export default function Schedules() {
                       >
                         <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${r.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
                       </button>
-                      <button onClick={() => handleDeleteReminder(r.id)} className="p-1 text-muted-foreground hover:text-red-500">
+                      <button onClick={() => handleDeleteReminder(r.id)} className="p-1 text-muted-foreground hover:text-destructive">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -224,23 +224,23 @@ export default function Schedules() {
               <div>
                 <label className="block text-sm font-medium mb-1">提醒名称 *</label>
                 <input type="text" value={newReminder.name} onChange={(e) => setNewReminder({...newReminder, name: e.target.value})}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="如：喝水提醒" required />
+                  className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="如：喝水提醒" required />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">推送标题 *</label>
                 <input type="text" value={newReminder.title} onChange={(e) => setNewReminder({...newReminder, title: e.target.value})}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="如：💧 喝水时间" required />
+                  className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="如：💧 喝水时间" required />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">推送内容</label>
                 <textarea value={newReminder.content} onChange={(e) => setNewReminder({...newReminder, content: e.target.value})}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" rows={2} placeholder="可选" />
+                  className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" rows={2} placeholder="可选" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">重复类型</label>
                   <select value={newReminder.repeat_type} onChange={(e) => setNewReminder({...newReminder, repeat_type: e.target.value})}
-                    className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                    className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
                     <option value="daily">每天</option>
                     <option value="weekly">每周</option>
                     <option value="monthly">每月</option>
@@ -251,13 +251,13 @@ export default function Schedules() {
                     <label className="block text-sm font-medium mb-1">{newReminder.repeat_type === 'weekly' ? '星期几' : '日期'}</label>
                     {newReminder.repeat_type === 'weekly' ? (
                       <select value={newReminder.repeat_day} onChange={(e) => setNewReminder({...newReminder, repeat_day: e.target.value})}
-                        className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                        className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
                         <option value="0">周一</option><option value="1">周二</option><option value="2">周三</option>
                         <option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6">周日</option>
                       </select>
                     ) : (
                       <input type="number" min={1} max={31} value={newReminder.repeat_day} onChange={(e) => setNewReminder({...newReminder, repeat_day: e.target.value})}
-                        className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" />
+                        className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" />
                     )}
                   </div>
                 )}
@@ -265,7 +265,7 @@ export default function Schedules() {
                 <div>
                   <label className="block text-sm font-medium mb-1">推送时间</label>
                   <input type="time" value={newReminder.reminder_time} onChange={(e) => setNewReminder({...newReminder, reminder_time: e.target.value})}
-                    className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required />
+                    className="bg-background w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required />
                 </div>
               </div>
               <div className="flex gap-3 pt-2">

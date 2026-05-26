@@ -8,7 +8,7 @@ from datetime import datetime
 
 from app.config import settings
 from app.db.session import async_session
-from app.db.models import Todo, CustomReminder, User
+from app.db.models import Todo, CustomReminder, User, RoomSchedule
 from app.services.course_service import CourseService
 from app.services.assignment_service import AssignmentService
 from app.notifications.bark_notifier import BarkNotifier
@@ -472,7 +472,35 @@ def register_tasks(scheduler):
         replace_existing=True,
     )
 
+    # 教室课表数据刷新（每日 4:00）
+    scheduler.add_daily_task(
+        refresh_room_data_daily,
+        hour=4,
+        minute=0,
+        name="refresh_room_data_daily"
+    )
+
     logger.info("✅ 所有定时任务注册完成")
+
+
+async def refresh_room_data_daily():
+    """
+    每日教室课表数据刷新任务
+    每天凌晨 4:00 刷新一次（数据量小、早起用的人少）
+    """
+    logger.info("🏢 开始执行每日教室数据刷新任务")
+
+    try:
+        async with async_session() as db:
+            from app.services.room_service import RoomService
+            service = RoomService(db)
+            result = await service.refresh_room_data()
+            if result.get("success"):
+                logger.info(f"✅ 教室数据刷新成功: {result['rooms_count']} 个教室, {result['schedules_count']} 条记录")
+            else:
+                logger.error(f"❌ 教室数据刷新失败: {result.get('message')}")
+    except Exception as e:
+        logger.error(f"❌ 教室数据刷新异常: {e}", exc_info=True)
 
 
 if __name__ == "__main__":

@@ -49,22 +49,29 @@ async def list_sources(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(DataSource).where(DataSource.user_id == user_id)
     )
+    store = ConfigStoreService(db, settings.fernet_key)
+    config_username_map = {
+        "chaoxing": await store.get("chaoxing_username", ""),
+        "smartestu": await store.get("smartestu_student_id", ""),
+    }
     sources = []
     for ds in result.scalars().all():
         creds = {}
         if ds.credentials:
             import json
             try:
-                store = ConfigStoreService(db, settings.fernet_key)
                 creds = store._decrypt_credentials(ds.credentials)
             except Exception:
                 creds = {}
+        username = creds.get("username", creds.get("student_id", ""))
+        if not username:
+            username = config_username_map.get(ds.type, "")
         sources.append({
             "id": ds.id,
             "type": ds.type,
             "name": ds.name,
             "enabled": ds.enabled,
-            "username": creds.get("username", creds.get("student_id", "")),
+            "username": username,
             "last_sync": ds.last_sync.isoformat() if ds.last_sync else None,
             "sync_status": ds.sync_status,
         })

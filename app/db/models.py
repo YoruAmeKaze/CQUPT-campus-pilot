@@ -151,6 +151,26 @@ class SystemConfig(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class RoomSchedule(Base):
+    """教室课表/空教室数据"""
+    __tablename__ = "room_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_name = Column(String(100), nullable=False, index=True)  # 教室名，如 "3105"
+    room_type = Column(String(50), default="教室")  # 教室 / 实验室 / 室外
+    capacity = Column(Integer, nullable=True)  # 可容纳人数
+    building = Column(String(100), nullable=True)  # 所属教学楼
+    day_of_week = Column(Integer, nullable=False)  # 1=周一 … 7=周日
+    start_slot = Column(Integer, nullable=False)  # 开始节次
+    end_slot = Column(Integer, nullable=False)  # 结束节次
+    start_week = Column(Integer, nullable=False)  # 开始周
+    end_week = Column(Integer, nullable=False)  # 结束周
+    week_mask = Column(String(30), nullable=True)  # 周次二进制标记
+    course_name = Column(String(200), nullable=True)  # 占用课程名（空则为空闲）
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class CustomReminder(Base):
     """自定义定时提醒"""
     __tablename__ = "custom_reminders"

@@ -44,6 +44,7 @@ interface SystemConfig {
   smartestu_password: string
   deepseek_api_key: string
   deepseek_model: string
+  llm_base_url: string
   feishu_app_id: string
   feishu_app_secret: string
   tunnel_server_host: string
@@ -115,6 +116,7 @@ export default function Settings() {
     smartestu_password: '',
     deepseek_api_key: '',
     deepseek_model: 'deepseek-chat',
+    llm_base_url: 'https://api.deepseek.com',
     feishu_app_id: '',
     feishu_app_secret: '',
     tunnel_server_host: '',
@@ -171,6 +173,7 @@ export default function Settings() {
           smartestu_password: config.smartestu_password,
           deepseek_api_key: config.deepseek_api_key,
           deepseek_model: config.deepseek_model,
+          llm_base_url: config.llm_base_url,
           feishu_app_id: config.feishu_app_id,
           feishu_app_secret: config.feishu_app_secret,
           tunnel_server_host: config.tunnel_server_host,
@@ -282,18 +285,13 @@ export default function Settings() {
           <p className="text-muted-foreground">所有配置已迁移到数据库，修改即时生效</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            onClick={fetchSchedulerStatus}
-            size="sm"
-            variant="outline"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            刷新状态
-          </Button>
-          <Button onClick={handleSave} size="sm" className={saved ? 'bg-green-600' : ''}>
+          <Button onClick={handleSave} size="sm">
             <Save className="w-4 h-4 mr-2" />
             {saved ? '保存成功' : '保存设置'}
           </Button>
+          {saved && (
+            <Badge variant="secondary" className="bg-green-100 text-green-700">已保存</Badge>
+          )}
         </div>
       </div>
 
@@ -342,10 +340,14 @@ export default function Settings() {
                     <SelectContent>
                       <SelectItem value="deepseek-chat">DeepSeek-V3 (Flash)</SelectItem>
                       <SelectItem value="deepseek-reasoner">DeepSeek-R1 (Pro)</SelectItem>
+                      <SelectItem value="qwen2.5">Qwen2.5 (Ollama)</SelectItem>
+                      <SelectItem value="deepseek-r1:7b">DeepSeek-R1:7B (Ollama)</SelectItem>
+                      <SelectItem value="llama3.1">Llama3.1 (Ollama)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
+              <InputField label="API 地址" field="llm_base_url" config={config} updateField={updateField} placeholder="https://api.deepseek.com" />
             </CardContent>
           </Card>
 
@@ -399,8 +401,10 @@ export default function Settings() {
                     {testingFeishu ? '测试中...' : '测试推送'}
                   </Button>
                   {feishuTestResult && (
-                    <div className={`text-sm ${feishuTestResult === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                      {feishuTestResult === 'success' ? '✓ 飞书推送测试成功！' : '✗ 飞书推送测试失败，请检查 Webhook URL'}
+                    <div>
+                      <Badge variant={feishuTestResult === 'success' ? 'secondary' : 'destructive'} className={feishuTestResult === 'success' ? 'bg-green-100 text-green-700' : ''}>
+                        {feishuTestResult === 'success' ? '✓ 飞书推送测试成功！' : '✗ 飞书推送测试失败，请检查 Webhook URL'}
+                      </Badge>
                     </div>
                   )}
                 </div>
@@ -468,8 +472,10 @@ export default function Settings() {
                     {testing ? '测试中...' : '测试推送'}
                   </Button>
                   {testResult && (
-                    <div className={`text-sm ${testResult === 'success' ? 'text-green-600' : 'text-red-600'}`}>
-                      {testResult === 'success' ? '✓ 推送测试成功！' : '✗ 推送测试失败，请检查配置'}
+                    <div>
+                      <Badge variant={testResult === 'success' ? 'secondary' : 'destructive'} className={testResult === 'success' ? 'bg-green-100 text-green-700' : ''}>
+                        {testResult === 'success' ? '✓ 推送测试成功！' : '✗ 推送测试失败，请检查配置'}
+                      </Badge>
                     </div>
                   )}
                 </div>
@@ -519,106 +525,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* 自定义定时提醒 */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <AlarmClock className="w-5 h-5" />
-                  自定义定时提醒
-                </CardTitle>
-                <Button size="sm" variant="outline" onClick={() => setShowAddReminder(true)}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  添加提醒
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {customReminders.length === 0 ? (
-                <p className="text-center text-muted-foreground py-4 text-sm">暂无自定义提醒，点击上方按钮添加</p>
-              ) : (
-                <div className="space-y-3">
-                  {customReminders.map((r) => {
-                    const typeLabel = r.repeat_type === 'daily' ? '每天' : r.repeat_type === 'weekly' ? ['周一','周二','周三','周四','周五','周六','周日'][r.repeat_day ?? 0] : `每月${r.repeat_day}日`
-                    return (
-                      <div key={r.id} className="flex items-center justify-between p-3 rounded-lg border">
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="font-medium truncate">{r.name}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {typeLabel} {r.reminder_time}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={() => handleToggleReminder(r)}
-                            className={`relative w-9 h-5 rounded-full transition-colors ${r.enabled ? 'bg-primary' : 'bg-muted'}`}
-                          >
-                            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${r.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                          </button>
-                          <button onClick={() => handleDeleteReminder(r.id)} className="p-1 text-muted-foreground hover:text-red-500">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 定时任务 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="w-5 h-5" />
-                定时任务状态
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loadingJobs ? (
-                <p className="text-center text-muted-foreground py-8">加载中...</p>
-              ) : jobs.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">暂无定时任务</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 px-4 text-sm font-medium">任务名称</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium">触发器</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium">下次执行</th>
-                        <th className="text-left py-3 px-4 text-sm font-medium">状态</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {jobs.map((job) => (
-                        <tr key={job.id} className="border-b">
-                          <td className="py-3 px-4">
-                            <span className="font-medium">{job.name}</span>
-                          </td>
-                          <td className="py-3 px-4 text-sm text-muted-foreground">
-                            {job.trigger}
-                          </td>
-                          <td className="py-3 px-4 text-sm text-muted-foreground">
-                            {job.next_run_time ? job.next_run_time.split('+')[0] : '-'}
-                          </td>
-                          <td className="py-3 px-4">
-                            {job.enabled ? (
-                              <Badge variant="secondary" className="bg-green-100 text-green-700">运行中</Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-gray-100 text-gray-500">已暂停</Badge>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
           {/* 数据管理 */}
           <Card>
             <CardHeader>
@@ -657,7 +563,7 @@ export default function Settings() {
                       }
                     }}
                   />
-                  <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                  <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
                 </label>
               </div>
               {config.auto_cleanup_enabled && (
@@ -679,7 +585,7 @@ export default function Settings() {
                 </div>
               )}
               {cleanupResult && (
-                <p className="text-sm text-green-600">{cleanupResult}</p>
+                <Badge variant="secondary" className="bg-green-100 text-green-700">{cleanupResult}</Badge>
               )}
               <div className="grid grid-cols-2 gap-4">
                 <Button
@@ -769,42 +675,42 @@ export default function Settings() {
               <CardTitle>服务状态</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
                 <span className="text-sm">后端服务</span>
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
                   <span className="text-sm text-green-600">正常</span>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
                 <span className="text-sm">定时任务</span>
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-green-500" />
                   <span className="text-sm text-green-600">运行中</span>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
                 <span className="text-sm">Bark 推送</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${config.bark_key ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                  <div className={`w-2 h-2 rounded-full ${config.bark_key ? 'bg-green-500' : 'bg-gray-300'}`} />
                   <span className={`text-sm ${config.bark_key ? 'text-green-600' : 'text-gray-400'}`}>
                     {config.bark_key ? '已配置' : '未配置'}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
                 <span className="text-sm">飞书机器人</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${config.feishu_webhook_url ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                  <div className={`w-2 h-2 rounded-full ${config.feishu_webhook_url ? 'bg-green-500' : 'bg-gray-300'}`} />
                   <span className={`text-sm ${config.feishu_webhook_url ? 'text-green-600' : 'text-gray-400'}`}>
                     {config.feishu_webhook_url ? '已配置' : '未配置'}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
                 <span className="text-sm">DeepSeek AI</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${config.deepseek_api_key ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                  <div className={`w-2 h-2 rounded-full ${config.deepseek_api_key ? 'bg-green-500' : 'bg-gray-300'}`} />
                   <span className={`text-sm ${config.deepseek_api_key ? 'text-green-600' : 'text-gray-400'}`}>
                     {config.deepseek_api_key ? '已配置' : '未配置'}
                   </span>
@@ -814,70 +720,6 @@ export default function Settings() {
           </Card>
         </div>
       </div>
-
-      {/* 添加自定义提醒模态框 */}
-      {showAddReminder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-lg bg-card p-6 shadow-xl">
-            <h3 className="text-xl font-bold mb-4">添加自定义提醒</h3>
-            <form onSubmit={handleCreateReminder} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">提醒名称 *</label>
-                <input type="text" value={newReminder.name} onChange={(e) => setNewReminder({...newReminder, name: e.target.value})}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="如：喝水提醒" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">推送标题 *</label>
-                <input type="text" value={newReminder.title} onChange={(e) => setNewReminder({...newReminder, title: e.target.value})}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="如：💧 喝水时间" required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">推送内容</label>
-                <textarea value={newReminder.content} onChange={(e) => setNewReminder({...newReminder, content: e.target.value})}
-                  className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" rows={2} placeholder="可选" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">重复类型</label>
-                  <select value={newReminder.repeat_type} onChange={(e) => setNewReminder({...newReminder, repeat_type: e.target.value})}
-                    className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
-                    <option value="daily">每天</option>
-                    <option value="weekly">每周</option>
-                    <option value="monthly">每月</option>
-                  </select>
-                </div>
-                {newReminder.repeat_type !== 'daily' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">{newReminder.repeat_type === 'weekly' ? '星期几' : '日期'}</label>
-                    {newReminder.repeat_type === 'weekly' ? (
-                      <select value={newReminder.repeat_day} onChange={(e) => setNewReminder({...newReminder, repeat_day: e.target.value})}
-                        className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
-                        <option value="0">周一</option><option value="1">周二</option><option value="2">周三</option>
-                        <option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6">周日</option>
-                      </select>
-                    ) : (
-                      <input type="number" min={1} max={31} value={newReminder.repeat_day} onChange={(e) => setNewReminder({...newReminder, repeat_day: e.target.value})}
-                        className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" />
-                    )}
-                  </div>
-                )}
-                {newReminder.repeat_type === 'daily' && <div />}
-                <div>
-                  <label className="block text-sm font-medium mb-1">推送时间</label>
-                  <input type="time" value={newReminder.reminder_time} onChange={(e) => setNewReminder({...newReminder, reminder_time: e.target.value})}
-                    className="w-full rounded-md border border-input px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowAddReminder(false)}
-                  className="flex-1 rounded-md border border-input px-4 py-2 text-sm font-medium hover:bg-accent transition-colors">取消</button>
-                <button type="submit"
-                  className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">创建</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
