@@ -5,6 +5,7 @@ import Courses from './pages/Courses'
 import Assignments from './pages/Assignments'
 import Todos from './pages/Todos'
 import Notifications from './pages/Notifications'
+import Schedules from './pages/Schedules'
 import Settings from './pages/Settings'
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Route path="/assignments" element={<Assignments />} />
           <Route path="/todos" element={<Todos />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/schedules" element={<Schedules />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Layout>

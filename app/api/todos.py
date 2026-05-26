@@ -21,6 +21,7 @@ class TodoCreateRequest(BaseModel):
     due_time: Optional[datetime] = Field(None, description="截止时间")
     priority: str = Field("normal", description="优先级 (low/normal/high)")
     source: str = Field("manual", description="来源 (manual/llm)")
+    reminder_enabled: bool = Field(False, description="是否开启提醒")
 
 
 class TodoUpdateRequest(BaseModel):
@@ -30,6 +31,7 @@ class TodoUpdateRequest(BaseModel):
     due_time: Optional[datetime] = None
     priority: Optional[str] = None
     is_completed: Optional[bool] = None
+    reminder_enabled: Optional[bool] = None
 
 
 @router.get("")
@@ -98,6 +100,7 @@ async def create_todo(
             due_time=request.due_time,
             priority=request.priority,
             source=request.source,
+            reminder_enabled=request.reminder_enabled,
         )
 
         return result
@@ -176,7 +179,7 @@ async def create_todo_by_llm(
     """
     通过大语言模型创建待办事项
 
-    此接口专门用于企业微信/LLM 意图识别后创建待办事项
+    此接口专门用于飞书/LLM 意图识别后创建待办事项
     """
     service = TodoService(db)
 

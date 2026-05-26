@@ -29,17 +29,33 @@ interface TodayCourse extends CourseItem {
 }
 
 interface SourceItem {
+  id: number
   name: string
   type: string
-  status: 'ok' | 'error' | 'pending'
-  lastSync?: string
+  enabled: boolean
+  sync_status: string
+  last_sync: string | null
+}
+
+interface DataSourceAPIItem {
+  id: number
+  type: string
+  name: string
+  enabled: boolean
+  username: string
+  last_sync: string | null
+  sync_status: string
 }
 
 export default function Dashboard() {
   const [todayCourses, setTodayCourses] = useState<TodayCourse[]>([])
   const [todayCount, setTodayCount] = useState(0)
-  const [weekCount, setWeekCount] = useState(0)
+  const [pendingTodoCount, setPendingTodoCount] = useState(0)
+  const [todayDueCount, setTodayDueCount] = useState(0)
+  const [todayDueLoading, setTodayDueLoading] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [sources, setSources] = useState<SourceItem[]>([])
+  const [sourcesLoading, setSourcesLoading] = useState(true)
 
   const getCurrentTimeSlot = (): number => {
     const now = new Date()
@@ -55,19 +71,16 @@ export default function Dashboard() {
     return -1
   }
 
-  const sources: SourceItem[] = [
-    { name: '教务系统', type: 'jwxt', status: 'ok', lastSync: '2026-05-25 06:00' },
-    { name: '数你最灵', type: 'smartestu', status: 'pending' },
-    { name: '学习通', type: 'chaoxing', status: 'error', lastSync: '2026-05-24 15:30' },
-  ]
-
   useEffect(() => {
     const fetchDashboard = async () => {
       setLoading(true)
       try {
-        const [todayRes, summaryRes] = await Promise.all([
+        const [todayRes, summaryRes, sourcesRes, todayAssignRes, todosRes] = await Promise.all([
           fetch('/api/courses/today'),
           fetch('/api/courses/summary'),
+          fetch('/api/data-sources'),
+          fetch('/api/assignments/today'),
+          fetch('/api/todos?status=pending'),
         ])
 
         if (todayRes.ok) {
@@ -84,12 +97,35 @@ export default function Dashboard() {
         if (summaryRes.ok) {
           const summaryData = await summaryRes.json()
           setTodayCount(summaryData.today_courses_count || 0)
-          setWeekCount(summaryData.week_courses_count || 0)
+        }
+
+        if (sourcesRes.ok) {
+          const data: DataSourceAPIItem[] = await sourcesRes.json()
+          setSources(data.map(s => ({
+            id: s.id,
+            name: s.name,
+            type: s.type,
+            enabled: s.enabled,
+            sync_status: s.sync_status,
+            last_sync: s.last_sync,
+          })))
+        }
+
+        if (todayAssignRes.ok) {
+          const data = await todayAssignRes.json()
+          setTodayDueCount(data.assignments?.length || 0)
+        }
+
+        if (todosRes.ok) {
+          const todosData = await todosRes.json()
+          setPendingTodoCount(todosData.todos?.length || 0)
         }
       } catch (error) {
         console.error('获取仪表盘数据失败:', error)
       } finally {
         setLoading(false)
+        setSourcesLoading(false)
+        setTodayDueLoading(false)
       }
     }
 
@@ -131,30 +167,43 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-destructive/50 bg-destructive/5">
+        <Card className={todayDueCount > 0 ? 'border-destructive/50 bg-destructive/5' : ''}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               今日截止作业
             </CardTitle>
-            <AlertTriangle className="h-5 w-5 text-destructive" />
+            {todayDueCount > 0 ? (
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            ) : (
+              <CheckCircle className="h-5 w-5 text-green-500" />
+            )}
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold text-destructive">0</div>
+            <div className={`text-4xl font-bold ${todayDueCount > 0 ? 'text-destructive' : ''}`}>
+              {todayDueLoading ? '...' : todayDueCount}
+            </div>
             <p className="text-xs text-muted-foreground mt-1">项待完成</p>
-            <Badge variant="secondary" className="mt-3">暂无数据</Badge>
+            {!todayDueLoading && todayDueCount > 0 && (
+              <Badge variant="destructive" className="mt-3">
+                需尽快完成
+              </Badge>
+            )}
+            {!todayDueLoading && todayDueCount === 0 && (
+              <Badge variant="secondary" className="mt-3">暂无未完成</Badge>
+            )}
           </CardContent>
         </Card>
 
         <Card className="relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              本周课程总数
+              待办事项
             </CardTitle>
             <FileText className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-bold">{loading ? '...' : weekCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">门课程</p>
+            <div className="text-4xl font-bold">{loading ? '...' : pendingTodoCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">项待完成</p>
           </CardContent>
         </Card>
       </div>
@@ -221,45 +270,51 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {sources.map((source, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-2 rounded-md bg-muted/50"
-                  >
-                    <div className="flex items-center gap-2">
-                      {source.status === 'ok' && (
-                        <CheckCircle className="h-4 w-4 text-green-500" />
-                      )}
-                      {source.status === 'error' && (
-                        <AlertTriangle className="h-4 w-4 text-red-500" />
-                      )}
-                      {source.status === 'pending' && (
-                        <Clock className="h-4 w-4 text-yellow-500" />
-                      )}
-                      <span className="text-sm font-medium">
-                        {source.name}
-                      </span>
+              {sourcesLoading ? (
+                <p className="text-center text-muted-foreground py-4">加载中...</p>
+              ) : sources.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">暂无数据源</p>
+              ) : (
+                <div className="space-y-3">
+                  {sources.map((source) => (
+                    <div
+                      key={source.id}
+                      className="flex items-center justify-between p-2 rounded-md bg-muted/50"
+                    >
+                      <div className="flex items-center gap-2">
+                        {source.sync_status === 'ok' && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {source.sync_status === 'error' && (
+                          <AlertTriangle className="h-4 w-4 text-red-500" />
+                        )}
+                        {source.sync_status === 'pending' && (
+                          <Clock className="h-4 w-4 text-yellow-500" />
+                        )}
+                        <span className="text-sm font-medium">
+                          {source.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            source.sync_status === 'ok'
+                              ? 'secondary'
+                              : source.sync_status === 'error'
+                              ? 'destructive'
+                              : 'outline'
+                          }
+                          className="text-xs"
+                        >
+                          {source.sync_status === 'ok' && '正常'}
+                          {source.sync_status === 'error' && '异常'}
+                          {source.sync_status === 'pending' && '待配置'}
+                        </Badge>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={
-                          source.status === 'ok'
-                            ? 'secondary'
-                            : source.status === 'error'
-                            ? 'destructive'
-                            : 'outline'
-                        }
-                        className="text-xs"
-                      >
-                        {source.status === 'ok' && '正常'}
-                        {source.status === 'error' && '异常'}
-                        {source.status === 'pending' && '待配置'}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                  ))}
               </div>
+              )}
               <Button variant="outline" className="w-full mt-4" size="sm" asChild>
                 <a href="/settings">管理数据源</a>
               </Button>
@@ -267,35 +322,6 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
-
-      <Card className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            开发进度
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { phase: 1, name: '项目骨架', status: 'done', desc: '已完成' },
-              { phase: 2, name: '教务课表', status: 'done', desc: '已完成' },
-              { phase: 3, name: '数你最灵', status: 'pending', desc: '待开发' },
-              { phase: 5, name: '企业微信', status: 'pending', desc: '待开发' },
-            ].map((item) => (
-              <div key={item.phase} className="text-center p-3 rounded-lg bg-background/50">
-                <div className="text-lg mb-1">
-                  {item.status === 'done' ? '✅' : item.status === 'next' ? '🔜' : '⏳'}
-                </div>
-                <div className="font-medium text-sm">Phase {item.phase}</div>
-                <div className="text-xs text-muted-foreground">{item.name}</div>
-                <div className={`text-xs mt-1 ${item.status === 'done' ? 'text-green-500' : 'text-primary'}`}>
-                  {item.desc}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

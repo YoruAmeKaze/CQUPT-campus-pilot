@@ -80,7 +80,6 @@ async def client(db_session):
 def sample_user_data():
     """示例用户数据"""
     return {
-        "wxwork_userid": "test_user_001",
         "student_id": "STUDENT_ID",
     }
 

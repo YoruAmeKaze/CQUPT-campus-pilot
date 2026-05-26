@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -96,6 +96,20 @@ export default function Notifications() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
+  useEffect(() => {
+    const saved = localStorage.getItem('notificationSettings')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSettings(parsed)
+        }
+      } catch {
+        // ignore corrupt data
+      }
+    }
+  }, [])
+
   const toggleSetting = (id: string) => {
     setSettings(settings.map(s =>
       s.id === id ? { ...s, enabled: !s.enabled } : s
@@ -116,6 +130,7 @@ export default function Notifications() {
 
   const handleReset = () => {
     setSettings(DEFAULT_SETTINGS)
+    localStorage.removeItem('notificationSettings')
   }
 
   const getIcon = (type: string) => {

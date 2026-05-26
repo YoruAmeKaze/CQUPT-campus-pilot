@@ -8,29 +8,51 @@ from datetime import datetime
 
 from app.config import settings
 from app.db.session import async_session
+from app.db.models import Todo, CustomReminder, User
 from app.services.course_service import CourseService
 from app.services.assignment_service import AssignmentService
 from app.notifications.bark_notifier import BarkNotifier
+from app.notifications.feishu_notifier import FeishuNotifier
 
 logger = logging.getLogger(__name__)
+
+
+async def _get_feishu_notifier(db) -> FeishuNotifier:
+    """从数据库加载飞书 Webhook URL 创建通知器"""
+    from app.services.config_store import ConfigStoreService
+    store = ConfigStoreService(db, settings.fernet_key)
+    url = await store.get("feishu_webhook_url", "")
+    return FeishuNotifier(webhook_url=url or settings.feishu_webhook_url)
+
+
+async def notify_all(title: str, message: str, assignment_data: dict = None):
+    """同时推送到 Bark 和飞书"""
+    # Bark 推送
+    bark = BarkNotifier()
+    await bark.send(message=message, title=title)
+
+    # 飞书推送（从 settings 获取 URL）
+    feishu = FeishuNotifier()
+    await feishu.send_text(f"{title}\n{message}")
 
 
 async def send_daily_schedule():
     """
     每日课表推送任务
-    每天早上 7:50 发送今日课表到 Bark
+    每天早上 7:50 发送今日课表到 Bark 和飞书
     """
     logger.info("📅 开始执行每日课表推送任务")
 
     try:
         async with async_session() as db:
             course_service = CourseService(db)
-            notifier = BarkNotifier()
+            bark_notifier = BarkNotifier()
+            feishu_notifier = await _get_feishu_notifier(db)
 
             # 获取用户
             from app.db.models import User
             from sqlalchemy import select
-            result = await db.execute(select(User))
+            result = await db.execute(select(User).where(User.student_id == settings.student_id).limit(1))
             user = result.scalar_one_or_none()
 
             if not user:
@@ -44,11 +66,14 @@ async def send_daily_schedule():
                 logger.info("📭 今日无课，跳过推送")
                 return
 
-            # 推送课表
-            success = await notifier.send_schedule_reminder(today_courses)
+            # 推送课表到 Bark
+            bark_success = await bark_notifier.send_schedule_reminder(today_courses)
 
-            if success:
-                logger.info("✅ 每日课表推送成功")
+            # 推送课表到飞书（富文本格式）
+            feishu_success = await feishu_notifier.send_schedule_reminder(today_courses)
+
+            if bark_success or feishu_success:
+                logger.info(f"✅ 每日课表推送成功 (Bark: {bark_success}, 飞书: {feishu_success})")
             else:
                 logger.error("❌ 每日课表推送失败")
 
@@ -59,19 +84,20 @@ async def send_daily_schedule():
 async def check_assignment_deadlines():
     """
     作业截止检查任务
-    每小时检查一次即将截止的作业
+    每小时检查一次即将截止的作业，同时推送到 Bark 和飞书
     """
     logger.info("⏰ 开始执行作业截止检查任务")
 
     try:
         async with async_session() as db:
             assignment_service = AssignmentService(db)
-            notifier = BarkNotifier()
+            bark_notifier = BarkNotifier()
+            feishu_notifier = await _get_feishu_notifier(db)
 
             # 获取用户
             from app.db.models import User
             from sqlalchemy import select
-            result = await db.execute(select(User))
+            result = await db.execute(select(User).where(User.student_id == settings.student_id).limit(1))
             user = result.scalar_one_or_none()
 
             if not user:
@@ -97,15 +123,24 @@ async def check_assignment_deadlines():
 
                     # 只在关键时间点推送
                     if hours_left <= 1 or (12 <= hours_left <= 13) or (23 <= hours_left <= 25):
-                        success = await notifier.send_assignment_reminder(
+                        # Bark 推送
+                        bark_success = await bark_notifier.send_assignment_reminder(
                             course_name=assignment.course_name or "未知课程",
                             title=assignment.title,
                             due_time=due_time.isoformat(),
                             hours_left=int(hours_left)
                         )
 
-                        if success:
-                            logger.info(f"✅ 作业提醒推送成功: {assignment.title}")
+                        # 飞书推送
+                        feishu_success = await feishu_notifier.send_assignment_reminder(
+                            course_name=assignment.course_name or "未知课程",
+                            title=assignment.title,
+                            due_time=due_time.isoformat(),
+                            hours_left=int(hours_left)
+                        )
+
+                        if bark_success or feishu_success:
+                            logger.info(f"✅ 作业提醒推送成功: {assignment.title} (Bark: {bark_success}, 飞书: {feishu_success})")
                         else:
                             logger.error(f"❌ 作业提醒推送失败: {assignment.title}")
 
@@ -127,7 +162,7 @@ async def sync_courses_daily():
             # 获取用户
             from app.db.models import User
             from sqlalchemy import select
-            result = await db.execute(select(User))
+            result = await db.execute(select(User).where(User.student_id == settings.student_id).limit(1))
             user = result.scalar_one_or_none()
 
             if not user:
@@ -160,7 +195,7 @@ async def sync_assignments_periodically():
             # 获取用户
             from app.db.models import User
             from sqlalchemy import select
-            result = await db.execute(select(User))
+            result = await db.execute(select(User).where(User.student_id == settings.student_id).limit(1))
             user = result.scalar_one_or_none()
 
             if not user:
@@ -200,15 +235,174 @@ async def sync_assignments_periodically():
 async def send_test_notification():
     """
     测试通知任务（仅用于调试）
+    同时推送到 Bark 和飞书
     """
     logger.info("🔔 发送测试通知")
-    
-    notifier = BarkNotifier()
-    await notifier.send_custom(
+
+    bark_notifier = BarkNotifier()
+    feishu_notifier = FeishuNotifier()
+
+    # Bark 推送
+    await bark_notifier.send_custom(
         message="定时任务测试成功！",
         title="🔔 测试通知"
     )
-    logger.info("✅ 测试通知发送成功")
+
+    # 飞书推送
+    await feishu.send_text("🔔 测试通知\n定时任务测试成功！")
+
+    logger.info("✅ 测试通知发送成功（Bark + 飞书）")
+
+
+async def cleanup_old_assignments_periodically():
+    """
+    定期清理过时作业任务
+    每天凌晨 3:00 检查配置并清理
+    """
+    logger.info("🧹 开始执行定期作业清理任务")
+
+    try:
+        async with async_session() as db:
+            from app.services.config_store import ConfigStoreService
+            from app.config import settings
+            store = ConfigStoreService(db, settings.fernet_key)
+
+            enabled = await store.get("auto_cleanup_enabled", "false")
+            if enabled != "true":
+                logger.info("  ⏭️ 自动清理未开启，跳过")
+                return
+
+            days = int(await store.get("auto_cleanup_days", "30"))
+            assignment_service = AssignmentService(db)
+
+            from app.db.models import User
+            from sqlalchemy import select
+            result = await db.execute(select(User).where(User.student_id == settings.student_id).limit(1))
+            user = result.scalar_one_or_none()
+            if not user:
+                logger.warning("⚠️ 没有找到用户，跳过清理")
+                return
+
+            deleted = await assignment_service.delete_old_completed_assignments(user.id, days)
+            logger.info(f"✅ 定期清理完成，删除 {deleted} 条过时作业")
+
+    except Exception as e:
+        logger.error(f"❌ 定期清理任务异常: {e}", exc_info=True)
+
+
+async def check_custom_reminders():
+    """
+    检查自定义定时提醒
+    每分钟检查一次，发送到期的提醒到 Bark 和飞书
+    """
+    logger.debug("⏰ 开始检查自定义定时提醒")
+
+    try:
+        from datetime import datetime, date
+        now = datetime.now()
+        current_time = now.strftime("%H:%M")
+        today_weekday = now.weekday()  # 0=周一
+        today_day = now.day
+
+        async with async_session() as db:
+            from sqlalchemy import select
+            result = await db.execute(
+                select(CustomReminder).where(
+                    CustomReminder.enabled == True,
+                    CustomReminder.reminder_time == current_time,
+                )
+            )
+            reminders = result.scalars().all()
+
+            if not reminders:
+                return
+
+            bark = BarkNotifier()
+            feishu = FeishuNotifier()
+
+            for r in reminders:
+                # 检查是否匹配重复规则
+                if r.repeat_type == "weekly" and r.repeat_day is not None and r.repeat_day != today_weekday:
+                    continue
+                if r.repeat_type == "monthly" and r.repeat_day is not None and r.repeat_day != today_day:
+                    continue
+
+                title = r.title or r.name
+                message = r.content or r.name
+
+                bark_success = await bark.send_custom(message=message, title=title)
+                feishu_success = await feishu.send_text(f"{title}\n{message}")
+
+                if bark_success or feishu_success:
+                    logger.info(f"✅ 自定义提醒推送成功: {r.name}")
+                else:
+                    logger.warning(f"⚠️ 自定义提醒推送未送达（未配置推送渠道）: {r.name}")
+
+    except Exception as e:
+        logger.error(f"❌ 自定义提醒检查异常: {e}", exc_info=True)
+
+
+async def check_todo_reminders():
+    """
+    检查待办事项提醒
+    每 5 分钟检查一次，发送启用了提醒的即将到期待办到 Bark 和飞书
+    """
+    logger.debug("⏰ 开始检查待办事项提醒")
+
+    try:
+        from datetime import datetime, timedelta
+        now = datetime.now()
+
+        async with async_session() as db:
+            from sqlalchemy import select
+            # 查找已启用提醒、未完成、未发送提醒、有截止时间的待办
+            result = await db.execute(
+                select(Todo).where(
+                    Todo.reminder_enabled == True,
+                    Todo.is_completed == False,
+                    Todo.reminder_sent == False,
+                    Todo.due_time.isnot(None),
+                )
+            )
+            todos = result.scalars().all()
+
+            if not todos:
+                return
+
+            bark = BarkNotifier()
+            feishu = FeishuNotifier()
+
+            for todo in todos:
+                # 只提醒即将在 1 小时内到期的
+                hours_left = (todo.due_time - now).total_seconds() / 3600
+                if hours_left > 1:
+                    continue
+
+                due_str = todo.due_time.strftime("%m-%d %H:%M") if todo.due_time else ""
+                title = "📌 待办提醒"
+                message = f"{todo.title}"
+                if due_str:
+                    message += f"\n截止时间：{due_str}"
+                if hours_left <= 0:
+                    message += "\n⚠️ 已过期！"
+                else:
+                    message += f"\n还剩 {int(hours_left)} 小时"
+
+                bark_success = await bark.send_todo_reminder(title=todo.title, due_time=due_str)
+                feishu_success = await feishu.send_text(f"{title}\n{message}")
+
+                # 标记已发送
+                todo.reminder_sent = True
+
+                if bark_success or feishu_success:
+                    logger.info(f"✅ 待办提醒推送成功: {todo.title}")
+                else:
+                    logger.warning(f"⚠️ 待办提醒推送未送达: {todo.title}")
+
+            await db.commit()
+
+    except Exception as e:
+        logger.error(f"❌ 待办提醒检查异常: {e}", exc_info=True)
 
 
 def register_tasks(scheduler):
@@ -248,6 +442,34 @@ def register_tasks(scheduler):
         sync_assignments_periodically,
         minutes=30,
         name="sync_assignments_periodically"
+    )
+
+    # 作业清理（每日 3:00）
+    scheduler.add_daily_task(
+        cleanup_old_assignments_periodically,
+        hour=3,
+        minute=0,
+        name="cleanup_old_assignments"
+    )
+
+    # 自定义定时提醒（每分钟检查）
+    scheduler.scheduler.add_job(
+        check_custom_reminders,
+        "interval",
+        minutes=1,
+        id="check_custom_reminders",
+        name="check_custom_reminders",
+        replace_existing=True,
+    )
+
+    # 待办事项提醒（每 5 分钟检查）
+    scheduler.scheduler.add_job(
+        check_todo_reminders,
+        "interval",
+        minutes=5,
+        id="check_todo_reminders",
+        name="check_todo_reminders",
+        replace_existing=True,
     )
 
     logger.info("✅ 所有定时任务注册完成")

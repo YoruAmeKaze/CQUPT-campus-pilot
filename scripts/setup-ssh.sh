@@ -309,30 +309,24 @@ main() {
         --generate)
             generate_keypair
             ;;
-
         --config)
             configure_ssh_client
             ;;
-
         --deploy-key)
             deploy_public_key
             ;;
-
         --test)
             test_connection
             ;;
-
         --show)
             show_current_config
             ;;
-
         --all)
             generate_keypair
             configure_ssh_client
             deploy_public_key
             test_connection
             ;;
-
         --help|*)
             echo "用法: $0 {--generate|--config|--deploy-key|--test|--show|--all|--help}"
             echo ""

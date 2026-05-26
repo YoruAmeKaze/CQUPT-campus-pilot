@@ -54,19 +54,21 @@ if %errorlevel% neq 0 (
 )
 
 :: 检查虚拟环境
-if not exist "venv" (
+if not exist "..\venv" (
     echo [INFO] Creating virtual environment...
-    python -m venv vvm
+    python -m venv ..\venv
 )
 
 :: 安装测试依赖并运行
-call venv\Scripts\activate.bat >nul 2>&1
+call ..\venv\Scripts\activate.bat >nul 2>&1
 pip install -q pytest pytest-asyncio httpx 2>nul
 
 echo.
 echo [1/3] Running backend tests...
+cd ..
 python -m pytest tests/ -v --tb=short --cov=app --cov-report=term-missing
 set TEST_RESULT=%errorlevel%
+cd scripts
 
 echo.
 if %TEST_RESULT% equ 0 (
@@ -232,13 +234,14 @@ if %errorlevel% equ 0 (
     echo.
     echo [SUCCESS] SSH connection successful!
     echo.
-    echo Next step: Edit deploy.sh and update these values:
-    echo   REMOTE_HOST="%REMOTE_HOST%"
-    echo   REMOTE_USER="%REMOTE_USER%"
-    echo   REMOTE_PORT=%REMOTE_PORT%
-    echo   SSH_KEY="%SSH_KEY_PATH%"
+    echo Next steps:
+    echo   1. Edit scripts/deploy.sh and update these values:
+    echo      REMOTE_HOST="%REMOTE_HOST%"
+    echo      REMOTE_USER="%REMOTE_USER%"
+    echo      REMOTE_PORT=%REMOTE_PORT%
+    echo      SSH_KEY="%SSH_KEY_PATH%"
     echo.
-    echo Then run: deploy.bat deploy
+    echo   2. Run: deploy.bat
 ) else (
     echo [ERROR] Connection failed. Please check:
     echo   1. Server address and port are correct
@@ -310,7 +313,7 @@ if %errorlevel% neq 0 (
         --exclude="*.pyc" ^
         --exclude=".env" ^
         --exclude="data/*.db" ^
-        "./*" "%REMOTE_USER%@%REMOTE_HOST%:/opt/campus-pilot/"
+        "*" "%REMOTE_USER%@%REMOTE_HOST%:/opt/campus-pilot/"
 ) else (
     rsync -avz --progress ^
         -e "ssh -p %REMOTE_PORT%" ^
@@ -321,7 +324,7 @@ if %errorlevel% neq 0 (
         --exclude='*.pyc' ^
         --exclude='.env' ^
         --exclude='data/*.db' ^
-        "./" "%REMOTE_USER%@%REMOTE_HOST%:/opt/campus-pilot/"
+        "../" "%REMOTE_USER%@%REMOTE_HOST%:/opt/campus-pilot/"
 )
 
 if %errorlevel% equ 0 (
@@ -333,8 +336,8 @@ if %errorlevel% equ 0 (
 )
 
 echo [3/5] Uploading .env file...
-if exist ".env" (
-    scp -P %REMOTE_PORT% ".env" "%REMOTE_USER%@%REMOTE_HOST%:/opt/campus-pilot/.env"
+if exist "..\.env" (
+    scp -P %REMOTE_PORT% "..\.env" "%REMOTE_USER%@%REMOTE_HOST%:/opt/campus-pilot/.env"
     ssh -p %REMOTE_PORT% "%REMOTE_USER%@%REMOTE_HOST%" "chmod 600 /opt/campus-pilot/.env"
     echo [OK] .env uploaded with permissions 600.
 ) else (
@@ -489,30 +492,30 @@ if %errorlevel% neq 0 (
 )
 
 :: 创建虚拟环境
-if not exist "venv" (
+if not exist "..\venv" (
     echo Creating virtual environment...
-    python -m venv vvm
+    python -m venv ..\venv
 )
 
 :: 安装依赖
-call venv\Scripts\activate.bat >nul 2>&1
-pip install -q -r requirements.txt >nul 2>&1
+call ..\venv\Scripts\activate.bat >nul 2>&1
+pip install -q -r ..\requirements.txt >nul 2>&1
 echo [OK] Backend dependencies ready.
 
 :: 启动后端
 echo Starting backend on http://localhost:8000 ...
-start "CampusPilot-Backend" cmd /k "cd /d %~dp0 && call venv\Scripts\activate.bat && python -m uvicorn app.main:app --reload --port 8000"
+start "CampusPilot-Backend" cmd /k "cd /d %~dp0.. && call venv\Scripts\activate.bat && python -m uvicorn app.main:app --reload --port 8000"
 
 :: 等待后端启动
 timeout /t 5 /nobreak >nul
 
 :: 启动前端
-if exist "frontend\node_modules" (
+if exist "..\frontend\node_modules" (
     echo Starting frontend on http://localhost:3000 ...
-    start "CampusPilot-Frontend" cmd /k "cd /d %~dp0frontend && npm run dev"
-) else if exist "frontend\package.json" (
+    start "CampusPilot-Frontend" cmd /k "cd /d %~dp0..\frontend && npm run dev"
+) else if exist "..\frontend\package.json" (
     echo Installing frontend dependencies and starting...
-    start "CampusPilot-Frontend" cmd /k "cd /d %~dp0frontend && npm install && npm run dev"
+    start "CampusPilot-Frontend" cmd /k "cd /d %~dp0..\frontend && npm install && npm run dev"
 ) else (
     echo [INFO] Frontend not found. Backend only mode.
 )

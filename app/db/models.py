@@ -19,7 +19,6 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    wxwork_userid = Column(String(64), unique=True, nullable=True)
     student_id = Column(String(32), nullable=True)
     created_at = Column(DateTime, default=func.now())
 
@@ -121,7 +120,7 @@ class Notification(Base):
 
 
 class Todo(Base):
-    """待办事项（支持通过企业微信自然语言创建）"""
+    """待办事项"""
     __tablename__ = "todos"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -132,6 +131,8 @@ class Todo(Base):
     priority = Column(String(20), default="normal")  # "low" / "normal" / "high"
     is_completed = Column(Boolean, default=False)
     source = Column(String(50), default="manual")  # "manual" / "llm"
+    reminder_enabled = Column(Boolean, default=False)  # 是否开启提醒
+    reminder_sent = Column(Boolean, default=False)  # 提醒是否已发送
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -147,4 +148,21 @@ class SystemConfig(Base):
     key = Column(String(100), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=True)
     description = Column(String(200), nullable=True)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class CustomReminder(Base):
+    """自定义定时提醒"""
+    __tablename__ = "custom_reminders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(200), nullable=False)  # 提醒名称（用户自定义）
+    title = Column(String(200), nullable=False)  # 推送标题
+    content = Column(Text, nullable=True)  # 推送内容
+    repeat_type = Column(String(20), nullable=False, default="daily")  # daily / weekly / monthly
+    repeat_day = Column(Integer, nullable=True)  # weekly=0-6(周一到周日), monthly=1-31
+    reminder_time = Column(String(5), nullable=False)  # HH:MM 格式
+    enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

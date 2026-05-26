@@ -11,11 +11,32 @@ from app.db.models import SystemConfig, DataSource
 logger = logging.getLogger(__name__)
 
 
-# 系统级配置键（不含 user_id）
 SYSTEM_KEYS = {
+    # ===== 已有数据库配置 =====
     "term_start_date": "学期开始日期，格式 YYYY-MM-DD",
     "bark_key": "Bark iOS 推送 Key",
     "deploy_mode": "部署模式: laptop / server",
+    "feishu_webhook_url": "飞书群机器人 Webhook URL",
+    "auto_cleanup_enabled": "自动清理过时数据开关",
+    "auto_cleanup_days": "数据保留天数",
+    # ===== 从 .env 迁移到数据库的配置 =====
+    "student_id": "学号",
+    "chaoxing_username": "学习通账号（手机号）",
+    "chaoxing_password": "学习通密码",
+    "smartestu_student_id": "数你最灵学号",
+    "smartestu_password": "数你最灵密码",
+    "deepseek_api_key": "DeepSeek API Key",
+    "deepseek_model": "DeepSeek 模型 (deepseek-chat / deepseek-reasoner)",
+    "feishu_app_id": "飞书应用 App ID",
+    "feishu_app_secret": "飞书应用 App Secret",
+    "tunnel_server_host": "公网服务器 IP",
+    "tunnel_server_user": "公网服务器用户名",
+    "tunnel_remote_port": "公网服务器监听端口",
+    "tunnel_local_port": "本地服务端口",
+    "tunnel_key_path": "SSH 密钥路径",
+    "vpn_host": "VPN 地址",
+    "vpn_username": "VPN 用户名",
+    "vpn_password": "VPN 密码",
 }
 
 
@@ -53,6 +74,21 @@ class ConfigStoreService:
     async def get_all(self) -> Dict[str, str]:
         result = await self.db.execute(select(SystemConfig))
         return {row.key: row.value or "" for row in result.scalars().all()}
+
+    async def load_all_into_settings(self, settings_obj: Any) -> int:
+        """
+        从数据库加载所有配置并覆盖到 settings 对象
+        返回覆盖的配置数量
+        """
+        db_configs = await self.get_all()
+        count = 0
+        for key, value in db_configs.items():
+            if value and hasattr(settings_obj, key):
+                old = getattr(settings_obj, key)
+                if str(old) != value:
+                    setattr(settings_obj, key, value)
+                    count += 1
+        return count
 
     async def migrate_from_env(self, env_values: Dict[str, str]) -> int:
         """将 .env 中的业务配置迁移到数据库"""

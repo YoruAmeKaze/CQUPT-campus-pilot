@@ -105,83 +105,60 @@ class SmartestuCrawler:
 
         logger.info("📖 获取数你最灵作业...")
 
-        # 尝试多个作业接口
-        apis = [
+        resp = await self.client.post(
             f"{self.BASE}/api/homework/student/mark/queryHomeworks",
-            f"{self.BASE}/api/homework/student/homework/query",
-        ]
+            headers={"Authorization": f"Bearer {self._token}"},
+            json={"studentId": self.student_id},
+            timeout=15.0,
+        )
 
-        for api_url in apis:
-            try:
+        if resp.status_code == 401 and self._refresh_token:
+            logger.info("🔄 Token 过期，尝试刷新...")
+            if await self._refresh():
                 resp = await self.client.post(
-                    api_url,
+                    f"{self.BASE}/api/homework/student/mark/queryHomeworks",
                     headers={"Authorization": f"Bearer {self._token}"},
-                    json={},
+                    json={"studentId": self.student_id},
                     timeout=15.0,
                 )
 
-                if resp.status_code == 401 and self._refresh_token:
-                    logger.info("🔄 Token 过期，尝试刷新...")
-                    if await self._refresh():
-                        resp = await self.client.post(
-                            api_url,
-                            headers={"Authorization": f"Bearer {self._token}"},
-                            json={},
-                            timeout=15.0,
-                        )
+        if resp.status_code != 200:
+            raise Exception(f"获取作业失败: HTTP {resp.status_code}")
 
-                if resp.status_code == 200:
-                    data = resp.json()
-                    items = data if isinstance(data, list) else data.get("homeworks", data.get("data", []))
-                    if items:
-                        assignments = []
-                        for item in items:
-                            a = self._parse_assignment(item)
-                            if a:
-                                assignments.append(a)
-                        logger.info(f"✅ 获取到 {len(assignments)} 个作业")
-                        return assignments
-                    else:
-                        logger.info("  📭 作业列表为空")
-                        return []
+        data = resp.json()
+        if data.get("code") != 200:
+            raise Exception(f"接口返回错误: {data.get('msg', '未知错误')}")
 
-                msg = ""
-                try:
-                    msg = ": " + resp.json().get("msg", resp.text[:100])
-                except Exception:
-                    msg = ""
-                logger.info(f"  API {api_url.split('/')[-1]} 返回 {resp.status_code}{msg}")
+        courses = data.get("data", {}).get("courseHomeworkDTOList", [])
+        assignments = []
 
-            except Exception as e:
-                logger.info(f"  API {api_url.split('/')[-1]} 异常: {e}")
-                continue
+        for course in courses:
+            course_name = course.get("courseName", "未知课程")
+            items = course.get("studentCourseHomeworkDTOList", [])
+            for item in items:
+                a = self._parse_assignment(item, course_name)
+                if a:
+                    assignments.append(a)
 
-        raise Exception("数你最灵作业接口暂不可用")
+        logger.info(f"✅ 获取到 {len(assignments)} 个作业")
+        return assignments
 
-    def _parse_assignment(self, item: dict) -> Optional[Dict]:
+    def _parse_assignment(self, item: dict, course_name: str) -> Optional[Dict]:
         """解析单个作业"""
         title = (
-            item.get("title")
-            or item.get("assignmentName")
-            or item.get("name")
+            item.get("name")
+            or item.get("title")
+            or item.get("homeworkName")
             or ""
         )
         if not title:
             return None
 
-        course_name = (
-            item.get("courseName")
-            or item.get("course")
-            or item.get("subjectName")
-            or "未知课程"
-        )
-
         due_time = None
         due_str = (
-            item.get("dueTime")
+            item.get("endTime")
+            or item.get("dueTime")
             or item.get("deadline")
-            or item.get("endTime")
-            or item.get("end_time")
             or ""
         )
         if due_str:
@@ -193,17 +170,16 @@ class SmartestuCrawler:
                 except (ValueError, AttributeError):
                     pass
 
-        is_completed = item.get("isCompleted") or item.get("completed") or False
-        status = item.get("status", "")
-        if isinstance(is_completed, str):
-            is_completed = is_completed.lower() in ("true", "1", "yes", "已完成", "已提交")
+        is_completed = False
+        submission_status = item.get("submission_status", "")
+        if submission_status in ("submitted", "completed"):
+            is_completed = True
+        elif isinstance(item.get("score"), (int, float)) and item["score"] > 0:
+            is_completed = True
+        elif item.get("status") in (1, 2):
+            is_completed = True
 
-        remote_id = str(
-            item.get("id")
-            or item.get("_id")
-            or item.get("homeworkId")
-            or ""
-        )
+        remote_id = str(item.get("id") or item.get("_id") or item.get("homeworkId") or "")
 
         return {
             "remote_id": remote_id,

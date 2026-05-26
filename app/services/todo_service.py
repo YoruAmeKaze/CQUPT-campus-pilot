@@ -37,6 +37,7 @@ class TodoService:
         due_time: Optional[datetime] = None,
         priority: str = "normal",
         source: str = "manual",
+        reminder_enabled: bool = False,
     ) -> dict:
         """
         创建待办事项
@@ -48,6 +49,7 @@ class TodoService:
             due_time: 截止时间
             priority: 优先级 (low/normal/high)
             source: 来源 (manual/llm)
+            reminder_enabled: 是否开启提醒
 
         Returns:
             待办事项数据
@@ -65,6 +67,7 @@ class TodoService:
                 priority=priority,
                 is_completed=False,
                 source=source,
+                reminder_enabled=reminder_enabled,
             )
             self.db.add(todo)
             await self.db.commit()
@@ -246,6 +249,8 @@ class TodoService:
             "priority": todo.priority,
             "is_completed": todo.is_completed,
             "source": todo.source,
+            "reminder_enabled": todo.reminder_enabled,
+            "reminder_sent": todo.reminder_sent,
             "created_at": todo.created_at.isoformat(),
             "updated_at": todo.updated_at.isoformat(),
         }

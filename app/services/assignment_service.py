@@ -21,26 +21,40 @@ class AssignmentService:
         self,
         user_id: int,
         status: Optional[str] = None,
-        limit: int = 50,
+        limit: int = 100,
+        term_start: Optional[str] = None,
     ) -> List[Assignment]:
         """
         获取用户的作业列表
-        
+
         Args:
             user_id: 用户ID
             status: 筛选状态（pending=未完成, completed=已完成, all=全部）
             limit: 限制数量
-            
+            term_start: 学期开始日期（用于过滤上学期已完成的作业）
+
         Returns:
             List[Assignment]: 作业列表
         """
         query = select(Assignment).where(Assignment.user_id == user_id)
-        
+
         if status == "pending":
             query = query.where(Assignment.is_completed == False)
         elif status == "completed":
             query = query.where(Assignment.is_completed == True)
-        
+
+        # 过滤上学期已完成作业（due_time < term_start 且已完成的归为"历史"）
+        if term_start:
+            try:
+                cutoff = datetime.strptime(term_start[:10], "%Y-%m-%d")
+                query = query.where(
+                    (Assignment.due_time >= cutoff)
+                    | (Assignment.due_time == None)
+                    | (Assignment.is_completed == False)
+                )
+            except (ValueError, AttributeError):
+                pass
+
         query = query.order_by(Assignment.due_time).limit(limit)
         result = await self.db.execute(query)
         return list(result.scalars().all())
@@ -121,22 +135,27 @@ class AssignmentService:
             
         # 先获取现有作业 remote_id 列表
         existing_query = (
-            select(Assignment.remote_id)
+            select(Assignment)
             .where(Assignment.user_id == user_id)
             .where(Assignment.remote_id != None)
         )
         existing_result = await self.db.execute(existing_query)
-        existing_ids = {id[0] for id in existing_result.all() if id[0]}
-        
+        existing_map = {a.remote_id: a for a in existing_result.scalars().all() if a.remote_id}
+
         # 逐个处理作业
         new_count = 0
+        updated_count = 0
         for data in assignments_data:
             remote_id = data.get("remote_id")
-            
-            # 如果有 remote_id 且已存在，则跳过
-            if remote_id and remote_id in existing_ids:
+
+            if remote_id and remote_id in existing_map:
+                existing = existing_map[remote_id]
+                new_completed = data.get("is_completed", False)
+                if existing.is_completed != new_completed:
+                    existing.is_completed = new_completed
+                    updated_count += 1
                 continue
-                
+
             # 创建新作业
             assignment = Assignment(
                 user_id=user_id,
@@ -150,11 +169,11 @@ class AssignmentService:
             )
             self.db.add(assignment)
             new_count += 1
-            
-        if new_count > 0:
+
+        if new_count > 0 or updated_count > 0:
             await self.db.commit()
-            
-        logger.info(f"📝 保存作业: 新增 {new_count} 条")
+
+        logger.info(f"📝 保存作业: 新增 {new_count} 条，更新状态 {updated_count} 条")
         return new_count
 
     async def mark_completed(
@@ -228,8 +247,8 @@ class AssignmentService:
         Returns:
             int: 删除数量
         """
-        cutoff = datetime.now()
-        cutoff = cutoff.replace(day=cutoff.day - days)
+        from datetime import timedelta
+        cutoff = datetime.now() - timedelta(days=days)
         
         query = (
             delete(Assignment)

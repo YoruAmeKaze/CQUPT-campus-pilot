@@ -42,13 +42,24 @@ async def get_or_create_default_user(db: AsyncSession) -> int:
 @router.get("")
 async def get_assignments(
     status: Optional[str] = Query(None, description="筛选状态：pending|completed|all"),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
     """获取作业列表"""
     user_id = await get_or_create_default_user(db)
     service = AssignmentService(db)
-    assignments = await service.get_assignments(user_id, status=status, limit=limit)
+
+    from app.services.config_store import ConfigStoreService
+    from app.config import settings
+    store = ConfigStoreService(db, settings.fernet_key)
+    term_start_str = await store.get("term_start_date", settings.term_start_date)
+
+    assignments = await service.get_assignments(
+        user_id,
+        status=status,
+        limit=limit,
+        term_start=term_start_str,
+    )
     
     return {
         "success": True,
@@ -234,3 +245,23 @@ async def delete_assignment(
         "success": True,
         "message": "已删除",
     }
+
+
+@router.post("/cleanup")
+async def cleanup_old_assignments(db: AsyncSession = Depends(get_db)):
+    """清理过时已完成作业"""
+    user_id = await get_or_create_default_user(db)
+    service = AssignmentService(db)
+
+    from app.services.config_store import ConfigStoreService
+    from app.config import settings
+    store = ConfigStoreService(db, settings.fernet_key)
+
+    enabled = await store.get("auto_cleanup_enabled", "false")
+    days = int(await store.get("auto_cleanup_days", "30"))
+
+    if enabled != "true":
+        return {"success": True, "message": "自动清理未开启，跳过", "deleted": 0}
+
+    deleted = await service.delete_old_completed_assignments(user_id, days)
+    return {"success": True, "message": f"已清理 {deleted} 条过时作业", "deleted": deleted}
