@@ -16,6 +16,7 @@ from app.db.models import User
 from app.services.course_service import CourseService
 from app.services.assignment_service import AssignmentService
 from app.services.todo_service import TodoService
+from app.services.room_service import RoomService
 from app.llm.text_to_sql import execute_text_sql
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,35 @@ TOOLS = [
                     },
                 },
                 "required": ["question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_empty_rooms",
+            "description": "查询指定时间段哪些教室是空闲的，支持按教学楼、教室类型、最少座位数筛选",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "day_of_week": {
+                        "type": "integer",
+                        "description": "星期几，1=周一，2=周二...7=周日，不传则查今天",
+                    },
+                    "start_slot": {
+                        "type": "integer",
+                        "description": "开始节次，如 1（1-2节）、3（3-4节）、5（5-6节）、7（7-8节）、9（9-10节）、11（11-12节），不传查全天",
+                    },
+                    "building": {
+                        "type": "string",
+                        "description": "教学楼名称筛选，如'3100'、'2100'，不传查全部",
+                    },
+                    "min_capacity": {
+                        "type": "integer",
+                        "description": "最少座位数，不传不限",
+                    },
+                },
+                "required": [],
             },
         },
     },
@@ -460,6 +490,44 @@ async def handle_flex_query(db: AsyncSession, question: str) -> str:
     return await execute_text_sql(db, question)
 
 
+async def handle_query_empty_rooms(db: AsyncSession,
+                                   day_of_week: Optional[int] = None,
+                                   start_slot: Optional[int] = None,
+                                   building: Optional[str] = None,
+                                   min_capacity: Optional[int] = None) -> str:
+    """工具：查询空教室"""
+    from datetime import date
+
+    svc = RoomService(db)
+    rooms = await svc.query_empty_rooms(
+        day_of_week=day_of_week,
+        start_slot=start_slot,
+        end_slot=start_slot + 1 if start_slot else None,
+        building=building,
+        min_capacity=min_capacity,
+    )
+
+    if not rooms:
+        return "🏫 该时间段没有空教室，试试调整查询条件"
+
+    weekday_names = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
+    today = date.today()
+    dow = day_of_week or today.weekday() + 1
+    slot_str = f"第{start_slot}节" if start_slot else "全天"
+
+    lines = [f"🏫 {weekday_names.get(dow, '')} {slot_str} 空教室（共 {len(rooms)} 间）："]
+    current_building = None
+    for r in rooms:
+        bld = r.get("building") or ""
+        if bld and bld != current_building:
+            current_building = bld
+            lines.append(f"\n📍 {bld}")
+        cap = f"（{r.get('capacity', '-')}座）" if r.get("capacity") else ""
+        lines.append(f"  {r['room_name']}  {r.get('room_type', '')}{cap}")
+
+    return "\n".join(lines)
+
+
 # ============================================================
 # 工具调度器
 # ============================================================
@@ -475,6 +543,7 @@ TOOL_HANDLERS = {
     "get_todos": handle_get_todos,
     "create_todo": handle_create_todo,
     "flex_query": handle_flex_query,
+    "query_empty_rooms": handle_query_empty_rooms,
 }
 
 
@@ -505,6 +574,12 @@ async def execute_tool(name: str, arguments: dict, db: AsyncSession) -> str:
             return await handler(db, date_str=arguments.get("date", ""))
         elif name == "flex_query":
             return await handler(db, question=arguments.get("question", ""))
+        elif name == "query_empty_rooms":
+            return await handler(db,
+                                 day_of_week=arguments.get("day_of_week"),
+                                 start_slot=arguments.get("start_slot"),
+                                 building=arguments.get("building"),
+                                 min_capacity=arguments.get("min_capacity"))
         return await handler(db)
     except Exception as e:
         logger.error(f"工具执行失败 {name}: {e}", exc_info=True)
