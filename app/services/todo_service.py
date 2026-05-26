@@ -16,8 +16,11 @@ class TodoService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def _get_or_create_user(self, student_id: str = "2025213306") -> User:
+    async def _get_or_create_user(self, student_id: Optional[str] = None) -> User:
         """获取或创建用户"""
+        if student_id is None:
+            from app.config import settings
+            student_id = settings.student_id or "2025213306"
         query = select(User).where(User.student_id == student_id)
         result = await self.db.execute(query)
         user = result.scalar_one_or_none()
