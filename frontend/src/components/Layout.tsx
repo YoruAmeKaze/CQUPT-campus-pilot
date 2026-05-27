@@ -31,12 +31,16 @@ function computeWeek(termStartDate: string): number {
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [currentWeek, setCurrentWeek] = useState(15)
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
     fetch('/api/config')
       .then(r => r.json())
-      .then(config => setCurrentWeek(computeWeek(config.term_start_date)))
-      .catch(() => {})
+      .then(config => {
+        setCurrentWeek(computeWeek(config.term_start_date))
+        setOnline(true)
+      })
+      .catch(() => setOnline(false))
   }, [])
   return (
     <div className="flex h-screen bg-background">
@@ -73,8 +77,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* 底部信息 */}
         <div className="absolute bottom-0 w-64 p-4 border-t border-border bg-card/50">
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium text-green-400">系统在线</span>
+            <div className={`w-2 h-2 rounded-full ${online ? 'bg-primary animate-pulse' : 'bg-gray-500'}`} />
+            <span className={`text-xs font-medium ${online ? 'text-primary' : 'text-gray-400'}`}>
+              {online ? '系统在线' : '系统离线'}
+            </span>
           </div>
           <p className="text-xs text-muted-foreground">CampusPilot v2.0</p>
           <p className="text-xs text-muted-foreground">重庆邮电大学</p>

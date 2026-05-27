@@ -249,7 +249,7 @@ async def send_test_notification():
     )
 
     # 飞书推送
-    await feishu.send_text("🔔 测试通知\n定时任务测试成功！")
+    await feishu_notifier.send_text("🔔 测试通知\n定时任务测试成功！")
 
     logger.info("✅ 测试通知发送成功（Bark + 飞书）")
 

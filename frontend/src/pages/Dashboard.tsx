@@ -10,6 +10,14 @@ import {
   CheckCircle,
   Server,
   Activity,
+  Bot,
+  Brain,
+  Wifi,
+  WifiOff,
+  MessageSquare,
+  Send,
+  Database,
+  Bell,
 } from 'lucide-react'
 
 interface CourseItem {
@@ -47,6 +55,18 @@ interface DataSourceAPIItem {
   sync_status: string
 }
 
+interface ServiceStatus {
+  status: 'ok' | 'warning' | 'error'
+  label: string
+  icon: string
+}
+
+interface BotHealth {
+  overall: string
+  message: string
+  services: Record<string, ServiceStatus>
+}
+
 export default function Dashboard() {
   const [todayCourses, setTodayCourses] = useState<TodayCourse[]>([])
   const [todayCount, setTodayCount] = useState(0)
@@ -56,6 +76,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [sources, setSources] = useState<SourceItem[]>([])
   const [sourcesLoading, setSourcesLoading] = useState(true)
+  const [botHealth, setBotHealth] = useState<BotHealth | null>(null)
+  const [botHealthLoading, setBotHealthLoading] = useState(true)
+  const [testMessage, setTestMessage] = useState('')
+  const [testReply, setTestReply] = useState('')
+  const [testLoading, setTestLoading] = useState(false)
 
   const getCurrentTimeSlot = (): number => {
     const now = new Date()
@@ -75,12 +100,13 @@ export default function Dashboard() {
     const fetchDashboard = async () => {
       setLoading(true)
       try {
-        const [todayRes, summaryRes, sourcesRes, todayAssignRes, todosRes] = await Promise.all([
+        const [todayRes, summaryRes, sourcesRes, todayAssignRes, todosRes, healthRes] = await Promise.all([
           fetch('/api/courses/today'),
           fetch('/api/courses/summary'),
           fetch('/api/data-sources'),
           fetch('/api/assignments/today'),
           fetch('/api/todos?status=pending'),
+          fetch('/api/health/detailed'),
         ])
 
         if (todayRes.ok) {
@@ -120,12 +146,18 @@ export default function Dashboard() {
           const todosData = await todosRes.json()
           setPendingTodoCount(todosData.todos?.length || 0)
         }
+
+        if (healthRes.ok) {
+          const healthData: BotHealth = await healthRes.json()
+          setBotHealth(healthData)
+        }
       } catch (error) {
         console.error('获取仪表盘数据失败:', error)
       } finally {
         setLoading(false)
         setSourcesLoading(false)
         setTodayDueLoading(false)
+        setBotHealthLoading(false)
       }
     }
 
@@ -133,6 +165,39 @@ export default function Dashboard() {
     const interval = setInterval(fetchDashboard, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  async function handleTestBot() {
+    if (!testMessage.trim() || testLoading) return
+    setTestLoading(true)
+    setTestReply('')
+    try {
+      const resp = await fetch('/api/llm/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: testMessage }),
+      })
+      const data = await resp.json()
+      setTestReply(data.reply || '（无回复）')
+    } catch (err) {
+      setTestReply('❌ 测试失败: ' + (err as Error).message)
+    } finally {
+      setTestLoading(false)
+    }
+  }
+
+  function getStatusIcon(iconName: string) {
+    const icons: Record<string, JSX.Element> = {
+      server: <Server className="w-4 h-4" />,
+      database: <Database className="w-4 h-4" />,
+      brain: <Brain className="w-4 h-4" />,
+      bot: <Bot className="w-4 h-4" />,
+      webhook: <Bell className="w-4 h-4" />,
+      bell: <Bell className="w-4 h-4" />,
+      tunnel: <Wifi className="w-4 h-4" />,
+      clock: <Clock className="w-4 h-4" />,
+    }
+    return icons[iconName] || <Server className="w-4 h-4" />
+  }
 
   const formatTime = (time: string) => {
     return time.substring(0, 5)
@@ -262,6 +327,96 @@ export default function Dashboard() {
         </Card>
 
         <div className="lg:col-span-3 space-y-6">
+          {/* 机器人连接状态 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Bot className="h-4 w-4" />
+                机器人连接状态
+                {!botHealthLoading && botHealth && (
+                  <Badge
+                    variant={botHealth.overall === 'ok' ? 'secondary' : 'outline'}
+                    className={botHealth.overall === 'ok' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'text-yellow-600'}
+                  >
+                    {botHealth.overall === 'ok' ? '🟢 全部正常' : '🟡 部分异常'}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {botHealthLoading ? (
+                <p className="text-center text-muted-foreground py-4">加载中...</p>
+              ) : botHealth ? (
+                <div className="space-y-2">
+                  {Object.entries(botHealth.services).map(([key, svc]) => (
+                    <div key={key} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(svc.icon)}
+                        <span className="text-sm font-medium">{svc.label}</span>
+                      </div>
+                      <Badge
+                        variant={
+                          svc.status === 'ok' ? 'secondary' :
+                          svc.status === 'warning' ? 'outline' : 'destructive'
+                        }
+                        className={`text-xs ${
+                          svc.status === 'ok' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                          svc.status === 'warning' ? 'text-yellow-600' : ''
+                        }`}
+                      >
+                        {svc.status === 'ok' ? '正常' :
+                         svc.status === 'warning' ? '未配置' : '异常'}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-muted-foreground py-4">无法获取状态</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 测试机器人对话 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                测试机器人对话
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {testReply && (
+                  <div className="p-3 rounded-lg bg-muted/50 text-sm whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+                    {testReply}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={testMessage}
+                    onChange={e => setTestMessage(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleTestBot(); }}
+                    placeholder="输入消息测试机器人回复..."
+                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleTestBot}
+                    disabled={testLoading || !testMessage.trim()}
+                  >
+                    <Send className={`w-4 h-4 mr-1 ${testLoading ? 'animate-pulse' : ''}`} />
+                    {testLoading ? '发送中...' : '发送'}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  提示：输入"今天有什么课"、"有哪些作业"、"想去自习"等来测试机器人功能
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 数据源状态 */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">

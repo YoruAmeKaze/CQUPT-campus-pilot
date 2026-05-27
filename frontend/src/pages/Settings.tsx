@@ -28,7 +28,9 @@ import {
   Brain,
   Shield,
   Smartphone,
+  Plus,
 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 interface SystemConfig {
   student_id: string
@@ -55,6 +57,8 @@ interface SystemConfig {
   vpn_host: string
   vpn_username: string
   vpn_password: string
+  campus: string
+  enable_lab_query: boolean
 }
 
 function InputField({ label, field, config, updateField, type = 'text', placeholder = '', className = '' }: {
@@ -127,6 +131,8 @@ export default function Settings() {
     vpn_host: 'vpn.cqupt.edu.cn',
     vpn_username: '',
     vpn_password: '',
+    campus: 'main',
+    enable_lab_query: false,
   })
   const [cleanupResult, setCleanupResult] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -184,6 +190,8 @@ export default function Settings() {
           vpn_host: config.vpn_host,
           vpn_username: config.vpn_username,
           vpn_password: config.vpn_password,
+          campus: config.campus,
+          enable_lab_query: config.enable_lab_query,
         }),
       })
       if (res.ok) {
@@ -256,6 +264,77 @@ export default function Settings() {
     alert('数据导出功能开发中...')
   }
 
+  // AI Provider 管理
+  interface AiProvider {
+    id: number
+    name: string
+    api_key: string
+    base_url: string
+    model: string
+    is_active: boolean
+  }
+
+  const [providers, setProviders] = useState<AiProvider[]>([])
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [editingProvider, setEditingProvider] = useState<AiProvider | null>(null)
+  const [form, setForm] = useState({ name: '', api_key: '', base_url: '', model: '' })
+
+  useEffect(() => {
+    fetchProviders()
+  }, [])
+
+  async function fetchProviders() {
+    try {
+      const res = await fetch('/api/ai/providers')
+      if (res.ok) setProviders(await res.json())
+    } catch {}
+  }
+
+  async function handleSaveProvider() {
+    try {
+      if (editingProvider) {
+        await fetch(`/api/ai/providers/${editingProvider.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        })
+      } else {
+        await fetch('/api/ai/providers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        })
+      }
+      setShowAddDialog(false)
+      setEditingProvider(null)
+      setForm({ name: '', api_key: '', base_url: '', model: '' })
+      await fetchProviders()
+    } catch {}
+  }
+
+  async function handleDeleteProvider(id: number) {
+    if (!confirm('确定要删除该 AI 配置吗？')) return
+    await fetch(`/api/ai/providers/${id}`, { method: 'DELETE' })
+    await fetchProviders()
+  }
+
+  async function handleActivateProvider(id: number) {
+    await fetch(`/api/ai/providers/${id}/activate`, { method: 'POST' })
+    await fetchProviders()
+  }
+
+  function openEditProvider(p: AiProvider) {
+    setEditingProvider(p)
+    setForm({ name: p.name, api_key: p.api_key, base_url: p.base_url, model: p.model })
+    setShowAddDialog(true)
+  }
+
+  function openAddProvider() {
+    setEditingProvider(null)
+    setForm({ name: '', api_key: '', base_url: '', model: '' })
+    setShowAddDialog(true)
+  }
+
   const quickActions = [
     { 
       icon: <Bell className="w-5 h-5" />, 
@@ -320,36 +399,122 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* DeepSeek AI 配置 */}
+          {/* AI 配置 */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="w-5 h-5" />
-                DeepSeek AI 配置
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <SecretField label="API Key" field="deepseek_api_key" config={config} updateField={updateField} placeholder="sk-..." />
-                <div className="space-y-2">
-                  <Label htmlFor="deepseek_model">模型选择</Label>
-                  <Select value={config.deepseek_model} onValueChange={(v) => updateField('deepseek_model', v)}>
-                    <SelectTrigger id="deepseek_model">
-                      <SelectValue placeholder="选择模型" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="deepseek-chat">DeepSeek-V3 (Flash)</SelectItem>
-                      <SelectItem value="deepseek-reasoner">DeepSeek-R1 (Pro)</SelectItem>
-                      <SelectItem value="qwen2.5">Qwen2.5 (Ollama)</SelectItem>
-                      <SelectItem value="deepseek-r1:7b">DeepSeek-R1:7B (Ollama)</SelectItem>
-                      <SelectItem value="llama3.1">Llama3.1 (Ollama)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Brain className="w-5 h-5" />
+                  AI 配置
+                </CardTitle>
+                <Button variant="outline" size="sm" onClick={openAddProvider}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  添加配置
+                </Button>
               </div>
-              <InputField label="API 地址" field="llm_base_url" config={config} updateField={updateField} placeholder="https://api.deepseek.com" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {providers.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  暂无 AI 配置，点击"添加配置"开始
+                </div>
+              ) : (
+                providers.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between p-3 rounded-lg border transition-colors hover:border-primary/30"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{p.name}</span>
+                        {p.is_active && (
+                          <Badge variant="secondary" className="bg-primary/10 text-primary text-xs border-primary/20">
+                            当前
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1 space-x-2">
+                        <span>{p.model}</span>
+                        <span>·</span>
+                        <span className="truncate inline-block max-w-[200px] align-bottom">{p.base_url}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {!p.is_active && (
+                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => handleActivateProvider(p.id)}>
+                          启用
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => openEditProvider(p)}>
+                        编辑
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive hover:text-destructive" onClick={() => handleDeleteProvider(p.id)}>
+                        删除
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
+
+          {/* AI 配置弹窗 */}
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingProvider ? '编辑 AI 配置' : '添加 AI 配置'}</DialogTitle>
+                <DialogDescription>
+                  支持任何 OpenAI 兼容接口的 AI 服务商，如 DeepSeek、GPT、Ollama 等
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>名称</Label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="例如：我的 GPT-4o、DeepSeek 备用"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>API Key</Label>
+                  <Input
+                    type="password"
+                    value={form.api_key}
+                    onChange={(e) => setForm({ ...form, api_key: e.target.value })}
+                    placeholder="sk-..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>API 地址</Label>
+                  <Input
+                    value={form.base_url}
+                    onChange={(e) => setForm({ ...form, base_url: e.target.value })}
+                    placeholder="https://api.openai.com/v1"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>模型名称</Label>
+                  <Input
+                    value={form.model}
+                    onChange={(e) => setForm({ ...form, model: e.target.value })}
+                    placeholder="gpt-4o / deepseek-chat / claude-sonnet-4-20250514"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    填写该服务商使用的具体模型标识名
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-2">
+                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                  取消
+                </Button>
+                <Button onClick={handleSaveProvider} disabled={!form.name || !form.api_key || !form.base_url || !form.model}>
+                  {editingProvider ? '保存修改' : '添加'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* 飞书应用配置 */}
           <Card>
@@ -409,6 +574,55 @@ export default function Settings() {
                   )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* 校区和教室查询配置 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                校区和教室查询配置
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="campus">校区选择</Label>
+                  <Select value={config.campus} onValueChange={(v) => updateField('campus', v)}>
+                    <SelectTrigger id="campus">
+                      <SelectValue placeholder="选择校区" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="main">主校区</SelectItem>
+                      <SelectItem value="xiantao">仙桃校区</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg border">
+                  <div className="flex items-center gap-3">
+                    <TestTube className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <div className="font-medium">启用实验室查询</div>
+                      <div className="text-sm text-muted-foreground">
+                        查询空闲教室时包含实验室（默认关闭）
+                      </div>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.enable_lab_query}
+                      onChange={(e) => updateField('enable_lab_query', e.target.checked)}
+                    />
+                    <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                  </label>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                配置校区过滤和是否包含实验室。网络教室和待定教室将自动排除在查询结果之外。
+              </p>
             </CardContent>
           </Card>
 
@@ -708,11 +922,11 @@ export default function Settings() {
                 </div>
               </div>
               <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                <span className="text-sm">DeepSeek AI</span>
+                <span className="text-sm">AI 服务</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${config.deepseek_api_key ? 'bg-green-500' : 'bg-gray-300'}`} />
-                  <span className={`text-sm ${config.deepseek_api_key ? 'text-green-600' : 'text-gray-400'}`}>
-                    {config.deepseek_api_key ? '已配置' : '未配置'}
+                  <div className={`w-2 h-2 rounded-full ${providers.some(p => p.is_active) ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <span className={`text-sm ${providers.some(p => p.is_active) ? 'text-green-600' : 'text-gray-400'}`}>
+                    {providers.find(p => p.is_active)?.name || '未配置'}
                   </span>
                 </div>
               </div>

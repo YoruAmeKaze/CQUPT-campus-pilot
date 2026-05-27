@@ -38,6 +38,9 @@ SYSTEM_KEYS = {
     "vpn_host": "VPN 地址",
     "vpn_username": "VPN 用户名",
     "vpn_password": "VPN 密码",
+    # ===== 教室查询配置 =====
+    "campus": "校区选择: main / xiantao",
+    "enable_lab_query": "是否启用实验室查询: true / false",
 }
 
 
