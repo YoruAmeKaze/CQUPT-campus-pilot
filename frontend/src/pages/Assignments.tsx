@@ -48,7 +48,6 @@ export default function Assignments() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [sources, setSources] = useState<DataSource[]>([])
-  const [sourcesLoading, setSourcesLoading] = useState(true)
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [showAddSource, setShowAddSource] = useState(false)
   const [addSourceError, setAddSourceError] = useState('')
@@ -65,7 +64,6 @@ export default function Assignments() {
 
   const fetchSources = async () => {
     try {
-      setSourcesLoading(true)
       const res = await fetch('/api/data-sources')
       if (res.ok) {
         const data = await res.json()
@@ -73,8 +71,6 @@ export default function Assignments() {
       }
     } catch (error) {
       console.error('获取数据源失败:', error)
-    } finally {
-      setSourcesLoading(false)
     }
   }
 
@@ -123,7 +119,6 @@ export default function Assignments() {
   const handleSync = async () => {
     try {
       const res = await fetch('/api/assignments/sync', { method: 'POST' })
-      const data = await res.json()
       if (res.ok) {
         fetchAssignments()
         fetchSources()
