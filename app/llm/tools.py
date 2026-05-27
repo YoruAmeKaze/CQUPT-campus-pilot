@@ -622,37 +622,66 @@ async def handle_plan_schedule(db: AsyncSession, request: str) -> str:
             week_courses = await course_svc.get_courses_by_week(user_id, week_num)
             courses = [c for c in week_courses if c.get("day_of_week") == day_of_week]
 
-        morning_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=1, min_capacity=30)
-        afternoon_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=7, min_capacity=30)
+        morning_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=1, end_slot=4, min_capacity=30)
+        afternoon_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=5, end_slot=8, min_capacity=30)
+        evening_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=9, end_slot=12, min_capacity=30)
 
         result_lines = [f"📅 {date_label}（第{week_num}周）行程建议："]
 
         if courses:
-            result_lines.append(f"\n📚 该时段有 {len(courses)} 节课：")
-            for c in courses:
-                loc = c.get("location", "未知地点")
-                time_range = f"{c.get('start_time', '')}-{c.get('end_time', '')}"
-                result_lines.append(f"  • {c['name']} {time_range} 📍{loc}")
+            # 如果指定了时段（上午/下午/晚上），只显示该时段的课程
+            if slot:
+                if slot == 1:
+                    slot_start, slot_end = 1, 4
+                elif slot == 5 or slot == 7:
+                    slot_start, slot_end = 5, 8
+                elif slot == 9:
+                    slot_start, slot_end = 9, 12
+                else:
+                    slot_start, slot_end = slot, slot + 1
+                slot_courses = [c for c in courses if c.get("start_slot", 0) <= slot_end and c.get("end_slot", 99) >= slot_start]
+            else:
+                slot_courses = courses
+
+            if slot_courses:
+                result_lines.append(f"\n📚 该时段有 {len(slot_courses)} 节课：")
+                for c in slot_courses:
+                    loc = c.get("location", "未知地点")
+                    time_range = f"{c.get('start_time', '')}-{c.get('end_time', '')}"
+                    result_lines.append(f"  • {c['name']} {time_range} 📍{loc}")
+            else:
+                result_lines.append(f"\n✅ 该时段没有课，可以放心去自习！")
 
         has_study = "自习" in request or "学习" in request or "复习" in request or "图书馆" in request
 
         if has_study and slot:
             if slot == 1:
                 empty = morning_rooms
-                slot_label = "上午（1-2节）"
-            else:
+                slot_label = "上午（1-4节 08:00-11:40）"
+            elif slot == 5:
                 empty = afternoon_rooms
-                slot_label = "下午（7-8节）" if slot == 7 else f"第{slot}节"
+                slot_label = "中午/下午（5-8节 14:00-17:35）"
+            elif slot == 7:
+                empty = afternoon_rooms
+                slot_label = "下午（7-8节 16:00-17:35）"
+            elif slot == 9:
+                empty = evening_rooms
+                slot_label = "晚上（9-12节 19:00-22:00）"
+            else:
+                empty = morning_rooms if slot <= 4 else (afternoon_rooms if slot <= 8 else evening_rooms)
+                slot_label = f"第{slot}节"
 
             if empty:
                 top3 = empty[:3]
-                result_lines.append(f"\n🏫 推荐自习地点（{slot_label}空教室 Top{len(top3)}）：")
+                result_lines.append(f"\n🏫 该时段空教室 Top{len(top3)}：")
                 for r in top3:
                     cap = f"{r.get('capacity', '-')}座" if r.get("capacity") else ""
                     bld = r.get("building", "")
                     result_lines.append(f"  • {r['room_name']} 📍{bld} {r.get('room_type', '')} {cap}")
                 if len(empty) > 3:
                     result_lines.append(f"  ...还有 {len(empty) - 3} 间可用")
+            else:
+                result_lines.append(f"\n😅 {slot_label}暂时没有可用空教室")
             result_lines.append(f"\n💡 提示：数据来源于教务系统教室课表，建议去之前确认一下～")
         elif has_study:
             if morning_rooms:
@@ -663,6 +692,7 @@ async def handle_plan_schedule(db: AsyncSession, request: str) -> str:
 
         return "\n".join(result_lines)
 
+    # 无具体日期 → 未来7天概览（优化：标注空闲时段和推荐教室）
     week_plan = []
     for i in range(7):
         check_date = today + timedelta(days=i)
@@ -674,7 +704,7 @@ async def handle_plan_schedule(db: AsyncSession, request: str) -> str:
             day_courses = [c for c in week_courses if c.get("day_of_week") == check_dow]
         has_class = bool(day_courses)
         day_label = "今天" if i == 0 else ("明天" if i == 1 else weekday_names_str.get(check_dow, ""))
-        morning_empty = await room_svc.query_empty_rooms(day_of_week=check_dow, start_slot=1, min_capacity=30) if not has_class else []
+        morning_empty = await room_svc.query_empty_rooms(day_of_week=check_dow, start_slot=1, end_slot=4, min_capacity=30) if not has_class else []
         free_msg = f"（推荐自习{morning_empty[0]['room_name'] if morning_empty else ''}）" if morning_empty else ""
         week_plan.append(f"{day_label}（{weekday_names_str.get(check_dow)}）{'📚 有课' if has_class else '🆓 无课' + free_msg}")
 

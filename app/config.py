@@ -38,8 +38,8 @@ class Settings(BaseSettings):
     # ===== 公网服务器（SSH隧道）=====
     tunnel_server_host: str = "47.76.188.165"
     tunnel_server_user: str = "root"
-    tunnel_remote_port: int = 9999
-    tunnel_local_port: int = 8000
+    tunnel_remote_port: str = "9997"
+    tunnel_local_port: str = "8000"
     tunnel_key_path: str = ""
 
     # ===== 加密密钥 =====
@@ -63,6 +63,10 @@ class Settings(BaseSettings):
 
     # ===== 飞书机器人配置 =====
     feishu_webhook_url: str = ""
+
+    # ===== 教室查询配置 =====
+    campus: str = "main"  # main / xiantao
+    enable_lab_query: bool = False
 
     class Config:
         env_file = ".env"

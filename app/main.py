@@ -134,6 +134,63 @@ async def health_check():
     }
 
 
+@app.get("/api/health/detailed")
+async def detailed_health():
+    """详细服务状态检测（机器人连接情况）"""
+    from app.llm.client import check_api_key
+    from app.services.feishu_app_service import FeishuAppService
+    from app.services.tunnel import is_tunnel_running, get_tunnel_pid
+
+    # DeepSeek AI
+    deepseek_ok = await check_api_key()
+
+    # 飞书应用
+    feishu_app = FeishuAppService()
+
+    # SSH 隧道
+    tunnel_running = is_tunnel_running()
+    tunnel_pid = get_tunnel_pid()
+    tunnel_info = f"PID:{tunnel_pid} -> :{settings.tunnel_remote_port}" if tunnel_running else "未连接"
+
+    # 定时任务调度器
+    scheduler_running = scheduler and scheduler.running
+
+    # 飞书 Webhook
+    webhook_configured = bool(settings.feishu_webhook_url)
+
+    # Bark
+    bark_configured = bool(settings.bark_key)
+
+    # 数据库
+    db_ok = True
+    try:
+        from app.db.session import async_session
+        from sqlalchemy import text
+        async with async_session() as db:
+            await db.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+
+    services = {
+        "server": {"status": "ok", "label": "后端服务", "icon": "server"},
+        "database": {"status": "ok" if db_ok else "error", "label": "数据库", "icon": "database"},
+        "deepseek": {"status": "ok" if deepseek_ok else "error", "label": "AI 服务", "icon": "brain"},
+        "feishu_app": {"status": "ok" if feishu_app.is_configured else "warning", "label": "飞书应用机器人", "icon": "bot"},
+        "feishu_webhook": {"status": "ok" if webhook_configured else "warning", "label": "飞书 Webhook 推送", "icon": "webhook"},
+        "bark": {"status": "ok" if bark_configured else "warning", "label": "Bark 推送", "icon": "bell"},
+        "tunnel": {"status": "ok" if tunnel_running else "warning", "label": "SSH 隧道", "icon": "tunnel"},
+        "scheduler": {"status": "ok" if scheduler_running else "error", "label": "定时任务", "icon": "clock"},
+    }
+
+    all_ok = all(s["status"] == "ok" for s in services.values())
+
+    return {
+        "overall": "ok" if all_ok else "degraded",
+        "message": "所有服务正常运行" if all_ok else "部分服务异常",
+        "services": services,
+    }
+
+
 @app.get("/")
 async def root():
     """根路径"""
@@ -155,6 +212,7 @@ from app.api.feishu_app import router as feishu_app_router
 from app.api.llm import router as llm_router
 from app.api.custom_reminders import router as custom_reminders_router
 from app.api.rooms import router as rooms_router
+from app.api.ai_providers import router as ai_providers_router
 
 app.include_router(courses_router)
 app.include_router(todos_router)
@@ -166,6 +224,7 @@ app.include_router(feishu_app_router)
 app.include_router(llm_router)
 app.include_router(custom_reminders_router)
 app.include_router(rooms_router)
+app.include_router(ai_providers_router)
 
 
 if __name__ == "__main__":

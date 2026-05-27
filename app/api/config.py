@@ -19,6 +19,7 @@ _config_fields = [
     "tunnel_server_host", "tunnel_server_user",
     "tunnel_remote_port", "tunnel_local_port", "tunnel_key_path",
     "vpn_host", "vpn_username", "vpn_password",
+    "campus", "enable_lab_query",
 ]
 
 
@@ -47,6 +48,8 @@ class ConfigResponse(BaseModel):
     vpn_host: str = ""
     vpn_username: str = ""
     vpn_password: str = ""
+    campus: str = "main"
+    enable_lab_query: bool = False
 
 
 class ConfigUpdate(BaseModel):
@@ -74,6 +77,8 @@ class ConfigUpdate(BaseModel):
     vpn_host: Optional[str] = None
     vpn_username: Optional[str] = None
     vpn_password: Optional[str] = None
+    campus: Optional[str] = None
+    enable_lab_query: Optional[bool] = None
 
 
 def _get_store(db: AsyncSession) -> ConfigStoreService:
@@ -92,6 +97,7 @@ async def _build_config_response(store: ConfigStoreService) -> dict:
         resp[field] = await _read_config_value(store, field)
     resp["auto_cleanup_enabled"] = (await store.get("auto_cleanup_enabled", "false")) == "true"
     resp["auto_cleanup_days"] = int(await store.get("auto_cleanup_days", "30"))
+    resp["enable_lab_query"] = (await store.get("enable_lab_query", "false")) == "true"
     return resp
 
 
@@ -122,14 +128,18 @@ async def update_config(config: ConfigUpdate, db: AsyncSession = Depends(get_db)
 
         for field in ["student_id", "chaoxing_username", "chaoxing_password",
                        "smartestu_student_id", "smartestu_password",
-                       "deepseek_api_key", "deepseek_model",
+                       "deepseek_api_key", "deepseek_model", "llm_base_url",
                        "feishu_app_id", "feishu_app_secret",
                        "tunnel_server_host", "tunnel_server_user",
                        "tunnel_remote_port", "tunnel_local_port", "tunnel_key_path",
-                       "vpn_host", "vpn_username", "vpn_password"]:
+                       "vpn_host", "vpn_username", "vpn_password",
+                       "campus"]:
             val = getattr(config, field, None)
             if val is not None:
                 update_map[field] = val
+
+        if config.enable_lab_query is not None:
+            update_map["enable_lab_query"] = "true" if config.enable_lab_query else "false"
 
         for key, value in update_map.items():
             await store.set(key, value, SYSTEM_KEYS_DESC.get(key, ""))
@@ -154,6 +164,7 @@ SYSTEM_KEYS_DESC = {
     "smartestu_password": "数你最灵密码",
     "deepseek_api_key": "DeepSeek API Key",
     "deepseek_model": "DeepSeek 模型",
+    "llm_base_url": "LLM API 地址",
     "feishu_app_id": "飞书应用 App ID",
     "feishu_app_secret": "飞书应用 App Secret",
     "tunnel_server_host": "公网服务器地址",
@@ -164,6 +175,8 @@ SYSTEM_KEYS_DESC = {
     "vpn_host": "VPN 地址",
     "vpn_username": "VPN 用户名",
     "vpn_password": "VPN 密码",
+    "campus": "校区选择 (main/xiantao)",
+    "enable_lab_query": "启用实验室查询",
 }
 
 

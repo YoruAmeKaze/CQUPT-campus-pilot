@@ -23,7 +23,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/feishu/app", tags=["飞书应用"])
 
-feishu_app = FeishuAppService()
+
+def _get_feishu_app() -> FeishuAppService:
+    """动态获取飞书应用服务实例（从最新配置）"""
+    from app.config import settings
+    return FeishuAppService(app_id=settings.feishu_app_id, app_secret=settings.feishu_app_secret)
+
 
 # 已处理消息缓存（去重）
 # key: message_id, value: timestamp
@@ -70,6 +75,7 @@ async def receive_event(request: Request, db: AsyncSession = Depends(get_db)):
         return JSONResponse(content={"challenge": challenge})
 
     if parsed["type"] == "message":
+        feishu_app = _get_feishu_app()
         chat_id = parsed.get("chat_id", "")
         text = parsed.get("text", "")
         chat_type = parsed.get("chat_type", "")
@@ -95,6 +101,7 @@ async def receive_event(request: Request, db: AsyncSession = Depends(get_db)):
 @router.get("/status")
 async def get_feishu_app_status():
     """获取飞书应用配置状态"""
+    feishu_app = _get_feishu_app()
     return {
         "configured": feishu_app.is_configured,
         "has_app_id": bool(feishu_app.app_id),
@@ -106,6 +113,7 @@ async def get_feishu_app_status():
 @router.post("/test")
 async def test_app():
     """测试飞书应用功能（检查 token 获取）"""
+    feishu_app = _get_feishu_app()
     if not feishu_app.is_configured:
         raise HTTPException(status_code=400, detail="飞书应用未配置")
 

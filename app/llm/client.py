@@ -23,77 +23,80 @@ logger = logging.getLogger(__name__)
 def _match_tool(question: str) -> Optional[str]:
     """
     尝试将用户问题匹配到预定义工具。
-    
-    优先级：预定义工具（快、稳、省） → Text-to-SQL（灵活兜底）
-    
+
+    优先级：预定义工具（快、稳、省） -> Text-to-SQL（灵活兜底）
+
     返回工具名称，或 None 表示无法匹配（走 Text-to-SQL 或聊天）
     """
     q = question.lower().strip()
-    
-    # ─── 创建待办 ───
+
+    # 创建待办
     create_keywords = ["添加待办", "创建待办", "新增待办", "添加代办", "创建代办",
                        "帮我记", "提醒我", "别忘了"]
     if any(kw in q for kw in create_keywords):
         return "create_todo"
-    
-    # ─── 行程规划/自习安排 ───
+
+    # 行程规划/自习安排
     plan_keywords = ["自习", "学习", "复习", "安排", "行程", "计划", "去哪",
                      "哪里可以", "哪个教室", "图书馆", "无课", "有空"]
     if any(kw in q for kw in plan_keywords):
         return "plan_schedule"
-    
-    # ─── 今日课表 ───
+
+    # 今日课表
     today_course = ["今天有什么课", "今天课表", "今天课程", "今天上课",
                     "今日课表", "今日课程", "今日上课"]
     if any(kw in q for kw in today_course):
         return "get_today_courses"
-    
-    # ─── 明日课表 ───
+
+    # 明日课表
     tomorrow_course = ["明天有什么课", "明天课表", "明天课程", "明天上课",
                        "明日课表", "明日课程", "明日上课"]
     if any(kw in q for kw in tomorrow_course):
         return "get_tomorrow_courses"
-    
-    # ─── 本周课表 ───
+
+    # 本周课表
     week_course = ["本周课表", "本周课程", "这周课表", "这周课程",
                    "这周有什么课", "本周有什么课"]
     if any(kw in q for kw in week_course):
         return "get_this_week_courses"
-    
-    # ─── 当前周次 ───
+
+    # 当前周次
     week_number = ["第几周", "当前周", "现在是第", "多少周", "几周了"]
     if any(kw in q for kw in week_number):
         return "get_current_week_number"
-    
-    # ─── 待完成作业 ───
+
+    # 待完成作业
     pending_asmt = ["待完成作业", "没完成作业", "未完成作业", "有哪些作业",
                     "作业有哪些", "查看作业", "作业列表", "剩余作业",
                     "即将截止作业", "快要截止作业"]
     if any(kw in q for kw in pending_asmt):
         return "get_pending_assignments"
-    
-    # ─── 过期作业 ───
+
+    # 过期作业
     if "过期" in q and "作业" in q:
         return "get_overdue_assignments"
-    
-    # ─── 查看待办 ───
+
+    # 查看待办
     view_todo = ["查看待办", "查看todo", "我的待办", "我的todo",
                  "待办列表", "有哪些待办", "待办事项", "任务列表"]
     if any(kw in q for kw in view_todo):
         return "get_todos"
-    
-    # ─── 空教室查询 ───
+
+    # 空教室查询
     empty_room = ["空教室", "空闲教室", "哪里可以自习", "找教室",
                   "有没有空教室", "教室有空", "没课教室"]
     if any(kw in q for kw in empty_room):
         return "query_empty_rooms"
-    
-    # ─── 未匹配到预定义工具，返回 None → 降级到 Text-to-SQL 或聊天 ───
+
+    # 未匹配到预定义工具，返回 None -> 降级到 Text-to-SQL 或聊天
     return None
 
-DEEPSEEK_BASE_URL = settings.llm_base_url  # 从配置读取，默认 https://api.deepseek.com
+DEEPSEEK_BASE_URL = settings.llm_base_url
 
-SYSTEM_PROMPT = """你是 CampusPilot 校园助手，运行在重庆邮电大学学生的个人学业管理系统中。
+def _build_system_prompt() -> str:
+    from datetime import date
+    today_str = date.today().isoformat()
+    return f"""你是 CampusPilot 校园助手，运行在重庆邮电大学学生的个人学业管理系统中。
 
 你可以帮助用户管理以下内容：
 1. **课表查询** - 今日课表、本周课表、指定日期课程等
@@ -106,7 +109,7 @@ SYSTEM_PROMPT = """你是 CampusPilot 校园助手，运行在重庆邮电大学
 - 对于「想去自习」「帮我安排」「去哪学习」等请求，请调用 plan_schedule 工具，帮用户查找空教室并给出具体推荐
 - 对于简单的问候、闲聊，直接用自然语言回复即可
 - 对于需要查询数据的问题（课表、作业、待办等），你会收到系统执行 SQL 后的结果，用友好的方式总结给用户
-- 涉及时间时注意当前日期（今天是 2026-05-27）
+- 涉及时间时注意当前日期（今天是 {today_str}）
 
 你的回答风格：
 - 简洁清晰，直接给出有用信息
@@ -126,8 +129,27 @@ SYSTEM_PROMPT = """你是 CampusPilot 校园助手，运行在重庆邮电大学
 - 第11-12节：21:00-22:00
 """
 
+SYSTEM_PROMPT = _build_system_prompt()
 
-TEXT_TO_SQL_PROMPT = """你是一个 SQL 查询专家。根据用户的问题，生成可以在 SQLite 数据库中执行的 SQL 查询语句。
+
+def _build_text_to_sql_prompt(db=None) -> str:
+    from datetime import date
+    today = date.today()
+    today_str = today.isoformat()
+    term_start = date.fromisoformat(settings.term_start_date)
+    current_week = (today - term_start).days // 7 + 1
+    user_id = 1
+    if db:
+        try:
+            from sqlalchemy import select
+            from app.db.models import User
+            result = db.execute(select(User).limit(1))
+            user = result.scalar_one_or_none()
+            if user:
+                user_id = user.id
+        except Exception:
+            pass
+    return f"""你是一个 SQL 查询专家。根据用户的问题，生成可以在 SQLite 数据库中执行的 SQL 查询语句。
 
 ## 数据库表结构：
 
@@ -170,17 +192,17 @@ TEXT_TO_SQL_PROMPT = """你是一个 SQL 查询专家。根据用户的问题，
 
 ## 重要规则：
 1. **只允许 SELECT 查询**，禁止 INSERT/UPDATE/DELETE/DROP/CREATE
-2. **只查询 user_id = 2 的数据**（当前用户）
+2. **只查询 user_id = {user_id} 的数据**（当前用户）
 3. 查询课程时，需要确保当前周在 start_week 和 end_week 之间：current_week BETWEEN start_week AND end_week
 4. 使用 LIMIT 限制返回行数，最多 20 行
 5. 日期比较使用 date('now') 获取当前日期
 6. 只输出 SQL 语句，不要包含其他解释性文字
 
 ## 关于周数计算：
-- 学期开始日期：2026-03-02（这是第 1 周周一）
-- 当前日期是 2026-05-26
-- 当前是第 13 周
-- 查询课程时，需要添加条件：13 BETWEEN start_week AND end_week
+- 学期开始日期：{settings.term_start_date}（这是第 1 周周一）
+- 当前日期是 {today_str}
+- 当前是第 {current_week} 周
+- 查询课程时，需要添加条件：{current_week} BETWEEN start_week AND end_week
 
 ## 关于周几计算：
 - SQLite 中 strftime('%w', date) 返回：0=周日，1=周一... 6=周六
@@ -189,76 +211,99 @@ TEXT_TO_SQL_PROMPT = """你是一个 SQL 查询专家。根据用户的问题，
 
 ## 示例：
 用户问："今天有什么课？"
-SQL: SELECT name, start_time, end_time, location FROM courses WHERE user_id = 2 AND day_of_week = CASE WHEN strftime('%w', date('now')) = '0' THEN 7 ELSE CAST(strftime('%w', date('now')) AS INTEGER) END AND 13 BETWEEN start_week AND end_week ORDER BY start_time
+SQL: SELECT name, start_time, end_time, location FROM courses WHERE user_id = {user_id} AND day_of_week = CASE WHEN strftime('%w', date('now')) = '0' THEN 7 ELSE CAST(strftime('%w', date('now')) AS INTEGER) END AND {current_week} BETWEEN start_week AND end_week ORDER BY start_time
 
 用户问："明天有什么课？"
-SQL: SELECT name, start_time, end_time, location FROM courses WHERE user_id = 2 AND day_of_week = CASE WHEN strftime('%w', date('now', '+1 day')) = '0' THEN 7 ELSE CAST(strftime('%w', date('now', '+1 day')) AS INTEGER) END AND 13 BETWEEN start_week AND end_week ORDER BY start_time
+SQL: SELECT name, start_time, end_time, location FROM courses WHERE user_id = {user_id} AND day_of_week = CASE WHEN strftime('%w', date('now', '+1 day')) = '0' THEN 7 ELSE CAST(strftime('%w', date('now', '+1 day')) AS INTEGER) END AND {current_week} BETWEEN start_week AND end_week ORDER BY start_time
 
 用户问："有多少作业没完成？"
-SQL: SELECT COUNT(*) FROM assignments WHERE user_id = 2 AND is_completed = 0
+SQL: SELECT COUNT(*) FROM assignments WHERE user_id = {user_id} AND is_completed = 0
 """
+
+TEXT_TO_SQL_PROMPT = _build_text_to_sql_prompt()
 
 
 def _parse_dsml_tool_calls(content: str) -> List[Dict]:
     """
     解析 DeepSeek 返回的 DSML 格式工具调用
     示例：
-    <｜｜DSML｜｜tool_calls>
-    <｜｜DSML｜｜invoke name="get_day_courses">
-    <｜｜DSML｜｜parameter name="date" string="true">2026-05-21</｜｜DSML｜｜parameter>
-    </｜｜DSML｜｜invoke>
-    </｜｜DSML｜｜tool_calls>
+    <tool_calls>
+    <invoke name="get_day_courses">
+    <parameter name="date" string="true">2026-05-21</parameter>
+    </invoke>
+    </tool_calls>
     """
     tool_calls = []
-    
+
     # 提取 invoke 块
-    invoke_pattern = r'<｜｜DSML｜｜invoke name="([^"]+)">([\s\S]*?)</｜｜DSML｜｜invoke>'
+    invoke_pattern = r'<invoke name="([^"]+)">([\s\S]*?)</invoke>'
     invoke_matches = re.findall(invoke_pattern, content)
-    
+
     for func_name, params_content in invoke_matches:
         # 提取参数
-        param_pattern = r'<｜｜DSML｜｜parameter name="([^"]+)"(?: [^>]+)?>([^<]*)</｜｜DSML｜｜parameter>'
+        param_pattern = r'<parameter name="([^"]+)"(?: [^>]+)?>([^<]*)</parameter>'
         param_matches = re.findall(param_pattern, params_content)
-        
+
         func_args = {}
         for param_name, param_value in param_matches:
-            # 尝试解析参数值（处理 string="true" 等属性）
             func_args[param_name] = param_value
-        
+
         tool_calls.append({
             "name": func_name,
             "arguments": func_args
         })
-    
+
     return tool_calls
 
 
-def _get_client() -> AsyncOpenAI:
-    """创建 DeepSeek API 客户端"""
+def _get_client(api_key: Optional[str] = None, base_url: Optional[str] = None) -> AsyncOpenAI:
+    """创建 LLM API 客户端，优先使用传入参数，其次使用配置"""
     return AsyncOpenAI(
-        api_key=settings.deepseek_api_key,
-        base_url=DEEPSEEK_BASE_URL,
+        api_key=api_key or settings.deepseek_api_key,
+        base_url=base_url or DEEPSEEK_BASE_URL,
     )
+
+
+async def _get_active_model(db: Optional[AsyncSession] = None) -> tuple:
+    """
+    获取当前激活的 AI 配置。
+    如果数据库中有激活的 provider 则使用，否则回退到 settings 中的默认配置。
+    返回 (api_key, base_url, model)
+    """
+    if db is not None:
+        try:
+            from sqlalchemy import select
+            from app.db.models import AiProvider
+            result = await db.execute(
+                select(AiProvider).where(AiProvider.is_active == True).limit(1)
+            )
+            provider = result.scalar_one_or_none()
+            if provider:
+                return provider.api_key, provider.base_url, provider.model
+        except Exception:
+            pass
+    return settings.deepseek_api_key, DEEPSEEK_BASE_URL, settings.deepseek_model
 
 
 async def chat_completion(
     messages: List[Dict[str, str]],
+    db: Optional[AsyncSession] = None,
     system_prompt: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 1024,
 ) -> str:
-    """调用 DeepSeek 对话补全 API（无工具调用）"""
-    if not settings.deepseek_api_key:
-        logger.warning("DeepSeek API Key 未配置")
-        return "⚠️ DeepSeek API Key 未配置，请在 .env 中设置 DEEPSEEK_API_KEY"
+    """调用 LLM 对话补全 API（无工具调用）"""
+    api_key, base_url, model = await _get_active_model(db)
+    if not api_key:
+        return "API Key 未配置，请在设置中添加 AI 配置"
 
     full_messages = [{"role": "system", "content": system_prompt or SYSTEM_PROMPT}]
     full_messages.extend(messages)
 
     try:
-        client = _get_client()
+        client = _get_client(api_key, base_url)
         response = await client.chat.completions.create(
-            model=settings.deepseek_model,
+            model=model,
             messages=full_messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -266,8 +311,8 @@ async def chat_completion(
         content = response.choices[0].message.content
         return content or "（AI 未返回内容）"
     except Exception as e:
-        logger.error(f"DeepSeek API 调用失败: {e}", exc_info=True)
-        return f"❌ AI 响应失败: {str(e)}"
+        logger.error(f"LLM API 调用失败: {e}", exc_info=True)
+        return f"AI 响应失败: {str(e)}"
 
 
 async def chat_with_tools(
@@ -278,24 +323,25 @@ async def chat_with_tools(
     max_tokens: int = 2048,
 ) -> str:
     """
-    调用 DeepSeek 对话补全 API（支持 Function Calling）
+    调用 LLM 对话补全 API（支持 Function Calling）
 
     流程：
-    1. 发送用户消息 + 工具定义给 DeepSeek
-    2. 如果 DeepSeek 决定调用工具，执行工具函数
-    3. 将工具结果返回给 DeepSeek，生成最终回复
+    1. 获取当前激活的 AI 配置
+    2. 发送用户消息 + 工具定义给 LLM
+    3. 如果 LLM 决定调用工具，执行工具函数
+    4. 将工具结果返回给 LLM，生成最终回复
     """
-    if not settings.deepseek_api_key:
-        logger.warning("DeepSeek API Key 未配置")
-        return "⚠️ DeepSeek API Key 未配置"
+    api_key, base_url, model = await _get_active_model(db)
+    if not api_key:
+        return "API Key 未配置，请在设置中添加 AI 配置"
 
     full_messages = [{"role": "system", "content": system_prompt or SYSTEM_PROMPT}]
     full_messages.extend(messages)
 
     try:
-        client = _get_client()
+        client = _get_client(api_key, base_url)
         response = await client.chat.completions.create(
-            model=settings.deepseek_model,
+            model=model,
             messages=full_messages,
             tools=TOOLS,
             temperature=temperature,
@@ -317,7 +363,7 @@ async def chat_with_tools(
                     "raw_arguments": tool_call.function.arguments
                 })
         # 检查是否是 DSML 格式工具调用
-        elif message.content and "<｜｜DSML｜｜tool_calls>" in message.content:
+        elif message.content and "<tool_calls>" in message.content:
             dsml_tool_calls = _parse_dsml_tool_calls(message.content)
             for i, tc in enumerate(dsml_tool_calls):
                 tool_calls_data.append({
@@ -336,11 +382,11 @@ async def chat_with_tools(
             func_name = tc["name"]
             func_args = tc["arguments"]
 
-            logger.info(f"🔧 LLM 调用工具: {func_name}({func_args})")
+            logger.info(f"LLM 调用工具: {func_name}({func_args})")
 
             # 执行工具函数
             tool_result = await execute_tool(func_name, func_args, db)
-            logger.info(f"✅ 工具结果: {tool_result[:100]}...")
+            logger.info(f"工具结果: {tool_result[:100]}...")
 
             # 将工具调用和结果加入对话
             full_messages.append({
@@ -363,9 +409,9 @@ async def chat_with_tools(
                 "content": tool_result,
             })
 
-        # 让 DeepSeek 根据工具结果生成最终回复
+        # 让 LLM 根据工具结果生成最终回复
         final_response = await client.chat.completions.create(
-            model=settings.deepseek_model,
+            model=model,
             messages=full_messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -374,8 +420,8 @@ async def chat_with_tools(
         return final_response.choices[0].message.content or "（查询完成）"
 
     except Exception as e:
-        logger.error(f"DeepSeek 工具调用失败: {e}", exc_info=True)
-        return f"❌ 查询失败: {str(e)}"
+        logger.error(f"LLM 工具调用失败: {e}", exc_info=True)
+        return f"查询失败: {str(e)}"
 
 
 async def simple_chat(user_message: str) -> str:
@@ -390,184 +436,39 @@ async def chat_or_reply(
     db: AsyncSession,
 ) -> str:
     """
-    智能判断与回复 - 优先级策略
-
-    1. 预定义工具匹配 → 直接执行（快、稳、省）
-    2. 预定义未匹配 + 含查询关键词 → Text-to-SQL（灵活兜底）
-    3. 普通聊天 → chat_completion()
+    智能对话：自动判断是否需要调用工具
+    1. 先尝试关键词匹配预定义工具
+    2. 匹配到工具 -> 直接执行（快、稳、省）
+    3. 未匹配 -> 交由 LLM 判断（走 Text-to-SQL 或聊天）
     """
-    tool_name = _match_tool(user_message)
+    # 第一步：尝试关键词匹配
+    matched_tool = _match_tool(user_message)
 
-    if tool_name == "create_todo":
-        from app.llm.tools import execute_tool
-        result = await execute_tool("create_todo", {"title": user_message}, db)
-        return result
+    if matched_tool:
+        logger.info(f"关键词匹配到工具: {matched_tool}")
+        tool_result = await execute_tool(matched_tool, {}, db)
+        return str(tool_result)
 
-    if tool_name == "get_todos":
-        from app.llm.tools import execute_tool
-        result = await execute_tool("get_todos", {}, db)
-        return result
-
-    # ─── 优先：用预定义工具（1次数据库查询，极快）───
-    if tool_name:
-        logger.info(f"⚡ 命中预定义工具: {tool_name}")
-        from app.llm.tools import execute_tool
-        result = await execute_tool(tool_name, {}, db)
-        return result
-
-    # ─── 兜底：判断是否是数据查询 → Text-to-SQL ───
-    query_keywords = [
-        "课表", "课程", "上课", "几点", "教室",
-        "作业", "截止", "提交",
-        "待办", "todo", "任务", "事项",
-        "统计", "多少", "有几个", "有哪些", "查询", "看看", "查看",
-        "星期", "周几", "哪天", "明后天", "后天", "前天", "大后天",
-        "这周", "下周", "上周",
-    ]
-    q = user_message.lower().strip()
-    is_query = any(kw in q for kw in query_keywords)
-
-    if is_query:
-        logger.info("🔍 未命中预定义工具，降级到 Text-to-SQL")
-        return await chat_text_to_sql(user_message, db)
-
-    # ─── 普通聊天 ───
-    return await chat_completion(
+    # 第二步：走 LLM 工具调用
+    return await chat_with_tools(
         messages=[{"role": "user", "content": user_message}],
+        db=db,
     )
 
 
-def _sanitize_sql(sql_text: str) -> str:
-    """清理并提取 SQL 语句"""
-    original = sql_text
-    
-    # 移除 markdown 代码块标记
-    sql_text = sql_text.replace("```sql", "").replace("```", "").replace("`", "").strip()
-    
-    # 如果整段话以 SELECT 开头，直接使用
-    if sql_text.upper().startswith("SELECT"):
-        return sql_text
-    
-    # 尝试在文本中查找 SELECT 语句
-    idx = sql_text.upper().find("SELECT")
-    if idx >= 0:
-        sql_text = sql_text[idx:].strip()
-        # 移除末尾的句号或多余内容
-        for end_marker in ["\n\n", ";--", "；"]:
-            if end_marker in sql_text:
-                sql_text = sql_text[:sql_text.index(end_marker)].strip()
-        return sql_text
-    
-    return original
-
-
-async def chat_text_to_sql(
-    user_message: str,
-    db: AsyncSession,
-) -> str:
-    """
-    直接使用 Text-to-SQL 查询数据库（跳过工具调用）
-    
-    流程：
-    1. 根据用户问题生成 SQL 查询
-    2. 验证 SQL 安全性
-    3. 执行 SQL
-    4. 将结果用自然语言总结给用户
-    """
-    if not settings.deepseek_api_key:
-        return "⚠️ DeepSeek API Key 未配置"
-
-    try:
-        client = _get_client()
-
-        # 第一步：生成 SQL
-        sql_response = await client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=[
-                {"role": "system", "content": TEXT_TO_SQL_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0,
-            max_tokens=500,
-        )
-
-        sql_text = sql_response.choices[0].message.content.strip()
-        logger.info(f"📝 DeepSeek 原始返回: {sql_text[:200]}")
-
-        # 清理 SQL
-        sql_text = _sanitize_sql(sql_text)
-        logger.info(f"📝 清理后 SQL: {sql_text}")
-
-        # 安全检查
-        if not sql_text.upper().startswith("SELECT"):
-            logger.warning(f"❌ 仍然是无效 SQL: {sql_text}")
-            return await chat_completion(
-                messages=[{"role": "user", "content": user_message}],
-            )
-
-        # 执行 SQL
-        result = await db.execute(text(sql_text))
-        rows = result.fetchall()
-
-        if not rows:
-            return "📭 查询结果为空"
-
-        columns = result.keys()
-        rows_data = [dict(zip(columns, row)) for row in rows[:20]]
-
-        # 格式化结果为自然语言
-        result_text = _format_sql_results(rows_data, user_message)
-
-        # 第二步：让 AI 总结结果
-        summary_response = await client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": f"查询结果：\n{result_text}"},
-            ],
-            temperature=0.7,
-            max_tokens=1024,
-        )
-
-        return summary_response.choices[0].message.content or result_text
-
-    except Exception as e:
-        logger.error(f"Text-to-SQL 执行失败: {e}", exc_info=True)
-        return f"❌ 查询失败: {str(e)}"
-
-
-def _format_sql_results(rows: list, question: str) -> str:
-    """格式化 SQL 查询结果"""
-    if not rows:
-        return "没有找到数据"
-
-    lines = [f"查询结果（共 {len(rows)} 条）："]
-    for i, row in enumerate(rows, 1):
-        parts = []
-        for key, value in row.items():
-            if value is not None:
-                if isinstance(value, str) and len(value) > 30:
-                    value = value[:30] + "..."
-                parts.append(f"{key}={value}")
-        if parts:
-            lines.append(f"{i}. " + ", ".join(parts))
-
-    return "\n".join(lines)
-
-
-async def check_api_key() -> bool:
-    """检查 DeepSeek API Key 是否有效"""
-    if not settings.deepseek_api_key:
+async def check_api_key(db: Optional[AsyncSession] = None) -> bool:
+    """检查 API Key 是否有效"""
+    api_key, base_url, _ = await _get_active_model(db)
+    if not api_key:
         return False
     try:
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=settings.deepseek_model,
-            messages=[{"role": "user", "content": "ping"}],
-            max_tokens=5,
-        )
-        return bool(response.choices)
-    except Exception as e:
-        logger.warning(f"DeepSeek API Key 验证失败: {e}")
+        client = _get_client(api_key, base_url)
+        response = await client.models.list()
+        return len(response.data) > 0
+    except Exception:
         return False
+
+
+async def get_db_schema(db: Optional[AsyncSession] = None) -> str:
+    """获取数据库表结构（给 Text-to-SQL 使用）"""
+    return _build_text_to_sql_prompt(db)

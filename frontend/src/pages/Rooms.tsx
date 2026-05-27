@@ -112,7 +112,7 @@ export default function Rooms() {
     }
   }
 
-  const buildingNames = [...new Set(buildings.map(b => b.name))].filter(Boolean)
+  const buildingNames = [...new Set(buildings.filter(b => b.type === '教室').map(b => b.name))].filter(Boolean).filter(n => n !== '教室')
 
   return (
     <div className="space-y-6">
@@ -158,7 +158,7 @@ export default function Rooms() {
                 max={21}
                 value={week}
                 onChange={e => setWeek(Number(e.target.value))}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                className="form-input"
               />
             </div>
             <div>
@@ -166,7 +166,7 @@ export default function Rooms() {
               <select
                 value={dayOfWeek}
                 onChange={e => setDayOfWeek(Number(e.target.value))}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                className="form-input"
               >
                 {WEEKDAYS.map((day, i) => (
                   <option key={i} value={i + 1}>{day}</option>
@@ -178,7 +178,7 @@ export default function Rooms() {
               <select
                 value={startSlot}
                 onChange={e => setStartSlot(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                className="form-input"
               >
                 <option value="">全天</option>
                 {SLOT_OPTIONS.map(opt => (
@@ -191,7 +191,7 @@ export default function Rooms() {
               <select
                 value={building}
                 onChange={e => setBuilding(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                className="form-input"
               >
                 <option value="">全部</option>
                 {buildingNames.map(name => (
@@ -204,7 +204,7 @@ export default function Rooms() {
               <select
                 value={roomType}
                 onChange={e => setRoomType(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                className="form-input"
               >
                 <option value="">全部</option>
                 <option value="教室">教室</option>
@@ -221,7 +221,7 @@ export default function Rooms() {
                 value={minCapacity}
                 onChange={e => setMinCapacity(e.target.value)}
                 placeholder="不限"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                className="form-input"
               />
             </div>
           </div>
@@ -289,9 +289,11 @@ export default function Rooms() {
                             ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
                             : room.room_type === '实验室'
                             ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                            : room.room_type === '室外'
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
                             : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                         }`}>
-                          {room.room_type}
+                          {room.room_type === '室外' ? '🌳 室外' : room.room_type}
                         </span>
                       </td>
                       <td className="py-3 px-2 text-right">

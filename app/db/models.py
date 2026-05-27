@@ -186,3 +186,18 @@ class CustomReminder(Base):
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class AiProvider(Base):
+    """用户自定义 AI 提供商配置"""
+    __tablename__ = "ai_providers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String(100), nullable=False)  # 用户自定义名称，如"我的GPT-4o"
+    api_key = Column(String(500), nullable=False)  # API 密钥
+    base_url = Column(String(500), nullable=False)  # API 地址
+    model = Column(String(100), nullable=False)  # 模型名称
+    is_active = Column(Boolean, default=False)  # 是否当前使用
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

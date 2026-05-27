@@ -74,9 +74,13 @@ class FeishuAppService:
             return None
 
     async def _ensure_token(self) -> Optional[str]:
-        """确保 token 有效，必要时刷新"""
-        if not self._tenant_access_token:
+        """确保 token 有效，必要时刷新（token 有效期 2 小时）"""
+        import time
+        now = int(time.time())
+        if not self._tenant_access_token or now >= self._token_expires_at:
             self._tenant_access_token = await self._get_tenant_access_token()
+            if self._tenant_access_token:
+                self._token_expires_at = now + 7000  # 提前 200s 刷新
         return self._tenant_access_token
 
     async def send_message(
