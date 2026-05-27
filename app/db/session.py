@@ -33,9 +33,10 @@ async def get_db():
 
 async def init_db():
     """初始化数据库，创建所有表并添加默认用户"""
-    # 1. 创建表
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    await _migrate_missing_columns()
     
     # 2. 检查并创建默认用户
     from sqlalchemy import select
@@ -52,6 +53,30 @@ async def init_db():
             )
             session.add(default_user)
             await session.commit()
+
+
+async def _migrate_missing_columns():
+    """迁移：给已有表添加缺失的新列"""
+    from sqlalchemy import text, inspect
+    
+    async with engine.begin() as conn:
+        
+        def _get_columns(connection):
+            inspector = inspect(connection)
+            return {col["name"] for col in inspector.get_columns("todos")}
+        
+        existing_column_names = await conn.run_sync(_get_columns)
+        
+        migrations = [
+            ("reminder_enabled", "INTEGER DEFAULT 0"),
+            ("reminder_sent", "INTEGER DEFAULT 0"),
+        ]
+        
+        for col_name, col_def in migrations:
+            if col_name not in existing_column_names:
+                await conn.execute(
+                    text(f"ALTER TABLE todos ADD COLUMN {col_name} {col_def}")
+                )
 
 
 async def close_db():

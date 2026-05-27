@@ -57,7 +57,7 @@ async def receive_event(request: Request, db: AsyncSession = Depends(get_db)):
     2. 用户 @机器人 或私聊机器人时的消息事件
     """
     body = await request.json()
-    logger.debug(f"收到飞书事件: {json.dumps(body, ensure_ascii=False)[:200]}")
+    logger.info(f"[DEBUG] 收到飞书事件请求: {json.dumps(body, ensure_ascii=False)[:500]}")
 
     parsed = FeishuAppService.parse_event_body(body)
 
