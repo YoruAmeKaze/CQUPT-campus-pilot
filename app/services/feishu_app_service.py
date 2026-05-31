@@ -156,6 +156,7 @@ class FeishuAppService:
             ai_reply = await chat_or_reply(
                 user_message=user_message,
                 db=db,
+                session_id=chat_id,
             )
         else:
             from app.llm.client import chat_completion

@@ -80,6 +80,7 @@ export default function Dashboard() {
   const [testMessage, setTestMessage] = useState('')
   const [testReply, setTestReply] = useState('')
   const [testLoading, setTestLoading] = useState(false)
+  const [sessionId] = useState(() => 'dash_' + Math.random().toString(36).slice(2, 10))
 
   const getCurrentTimeSlot = (): number => {
     const now = new Date()
@@ -173,7 +174,7 @@ export default function Dashboard() {
       const resp = await fetch('/api/llm/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: testMessage }),
+        body: JSON.stringify({ message: testMessage, session_id: sessionId }),
       })
       const data = await resp.json()
       setTestReply(data.reply || '（无回复）')

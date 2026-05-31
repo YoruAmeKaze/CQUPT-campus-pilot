@@ -292,21 +292,25 @@ async def chat_with_tools(
     system_prompt: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 2048,
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> str:
     """
     调用 LLM 对话补全 API（支持 Function Calling）
 
     流程：
     1. 获取当前激活的 AI 配置
-    2. 发送用户消息 + 工具定义给 LLM
-    3. 如果 LLM 决定调用工具，执行工具函数
-    4. 将工具结果返回给 LLM，生成最终回复
+    2. 如果提供了 history，注入到 system prompt 之后、本轮消息之前
+    3. 发送用户消息 + 工具定义给 LLM
+    4. 如果 LLM 决定调用工具，执行工具函数
+    5. 将工具结果返回给 LLM，生成最终回复
     """
     api_key, base_url, model = await _get_active_model(db)
     if not api_key:
         return "API Key 未配置，请在设置中添加 AI 配置"
 
     full_messages = [{"role": "system", "content": system_prompt or SYSTEM_PROMPT}]
+    if history:
+        full_messages.extend(history)
     full_messages.extend(messages)
 
     try:
@@ -405,31 +409,52 @@ async def simple_chat(user_message: str) -> str:
 async def chat_or_reply(
     user_message: str,
     db: AsyncSession,
+    session_id: Optional[str] = None,
 ) -> str:
     """
     智能对话：自动判断是否需要调用工具
     1. 先尝试关键词匹配预定义工具
     2. 匹配到工具 -> 直接执行（快、稳、省）
     3. 未匹配 -> 交由 LLM 判断（走 Function Calling 或聊天）
+
+    如果提供了 session_id，自动注入最近 3 轮对话历史。
     """
+    history = None
+    if session_id:
+        from app.llm.memory import memory
+        history = memory.get_history(session_id)
+
     # 第一步：尝试关键词匹配
     matched_tool = _match_tool(user_message)
 
     if matched_tool:
         logger.info(f"关键词匹配到工具: {matched_tool}")
 
-        # plan_schedule 需要传入用户原始消息来解析日期/时段
         if matched_tool == "plan_schedule":
             tool_result = await execute_tool("plan_schedule", {"request": user_message}, db)
         else:
             tool_result = await execute_tool(matched_tool, {}, db)
+
+        # 记录记忆
+        if session_id:
+            from app.llm.memory import memory
+            memory.add(session_id, user_message, str(tool_result))
+
         return str(tool_result)
 
     # 第二步：走 LLM 工具调用（Function Calling）
-    return await chat_with_tools(
+    reply = await chat_with_tools(
         messages=[{"role": "user", "content": user_message}],
         db=db,
+        history=history,
     )
+
+    # 记录记忆
+    if session_id:
+        from app.llm.memory import memory
+        memory.add(session_id, user_message, reply)
+
+    return reply
 
 
 async def check_api_key(db: Optional[AsyncSession] = None) -> bool:

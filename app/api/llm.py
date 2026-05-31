@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/llm", tags=["AI 对话"])
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str | None = None
 
 
 @router.post("/chat")
@@ -30,7 +31,7 @@ async def chat(request: ChatRequest):
 @router.post("/test")
 async def test_bot(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """测试机器人回复（完整模拟飞书机器人回复流程）"""
-    reply = await chat_or_reply(request.message, db)
+    reply = await chat_or_reply(request.message, db, session_id=request.session_id)
     return {"reply": reply}
 
 
