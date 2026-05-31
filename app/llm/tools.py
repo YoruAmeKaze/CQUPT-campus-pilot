@@ -566,8 +566,6 @@ _slot_to_time = {
 
 async def handle_plan_schedule(db: AsyncSession, request: str) -> str:
     """工具：智能行程规划"""
-    import re
-    from datetime import date, timedelta
 
     today = date.today()
     weekday_names_str = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
@@ -616,101 +614,86 @@ async def handle_plan_schedule(db: AsyncSession, request: str) -> str:
     if not all_rooms:
         return "⚠️ 空教室数据尚未同步，请联系管理员先执行教室数据刷新"
 
-    if target_date:
-        courses = []
-        if user_id:
-            week_courses = await course_svc.get_courses_by_week(user_id, week_num)
-            courses = [c for c in week_courses if c.get("day_of_week") == day_of_week]
+    if not target_date:
+        # ─── 无具体日期 → 未来7天概览 ───
+        week_plan = []
+        for i in range(7):
+            check_date = today + timedelta(days=i)
+            check_dow = check_date.weekday() + 1
+            check_week = course_svc._calculate_week_number(check_date)
+            day_courses = []
+            if user_id:
+                week_courses = await course_svc.get_courses_by_week(user_id, check_week)
+                day_courses = [c for c in week_courses if c.get("day_of_week") == check_dow]
+            has_class = bool(day_courses)
+            day_label = "今天" if i == 0 else ("明天" if i == 1 else weekday_names_str.get(check_dow, ""))
+            morning_empty = await room_svc.query_empty_rooms(day_of_week=check_dow, start_slot=1, end_slot=4, min_capacity=30) if not has_class else []
+            free_msg = f"（推荐自习{morning_empty[0]['room_name'] if morning_empty else ''}）" if morning_empty else ""
+            week_plan.append(f"{day_label}（{weekday_names_str.get(check_dow)}）{'📚 有课' if has_class else '🆓 无课' + free_msg}")
 
-        morning_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=1, end_slot=4, min_capacity=30)
-        afternoon_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=5, end_slot=8, min_capacity=30)
-        evening_rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=9, end_slot=12, min_capacity=30)
-
-        result_lines = [f"📅 {date_label}（第{week_num}周）行程建议："]
-
-        if courses:
-            # 如果指定了时段（上午/下午/晚上），只显示该时段的课程
-            if slot:
-                if slot == 1:
-                    slot_start, slot_end = 1, 4
-                elif slot == 5 or slot == 7:
-                    slot_start, slot_end = 5, 8
-                elif slot == 9:
-                    slot_start, slot_end = 9, 12
-                else:
-                    slot_start, slot_end = slot, slot + 1
-                slot_courses = [c for c in courses if c.get("start_slot", 0) <= slot_end and c.get("end_slot", 99) >= slot_start]
-            else:
-                slot_courses = courses
-
-            if slot_courses:
-                result_lines.append(f"\n📚 该时段有 {len(slot_courses)} 节课：")
-                for c in slot_courses:
-                    loc = c.get("location", "未知地点")
-                    time_range = f"{c.get('start_time', '')}-{c.get('end_time', '')}"
-                    result_lines.append(f"  • {c['name']} {time_range} 📍{loc}")
-            else:
-                result_lines.append(f"\n✅ 该时段没有课，可以放心去自习！")
-
-        has_study = "自习" in request or "学习" in request or "复习" in request or "图书馆" in request
-
-        if has_study and slot:
-            if slot == 1:
-                empty = morning_rooms
-                slot_label = "上午（1-4节 08:00-11:40）"
-            elif slot == 5:
-                empty = afternoon_rooms
-                slot_label = "中午/下午（5-8节 14:00-17:35）"
-            elif slot == 7:
-                empty = afternoon_rooms
-                slot_label = "下午（7-8节 16:00-17:35）"
-            elif slot == 9:
-                empty = evening_rooms
-                slot_label = "晚上（9-12节 19:00-22:00）"
-            else:
-                empty = morning_rooms if slot <= 4 else (afternoon_rooms if slot <= 8 else evening_rooms)
-                slot_label = f"第{slot}节"
-
-            if empty:
-                top3 = empty[:3]
-                result_lines.append(f"\n🏫 该时段空教室 Top{len(top3)}：")
-                for r in top3:
-                    cap = f"{r.get('capacity', '-')}座" if r.get("capacity") else ""
-                    bld = r.get("building", "")
-                    result_lines.append(f"  • {r['room_name']} 📍{bld} {r.get('room_type', '')} {cap}")
-                if len(empty) > 3:
-                    result_lines.append(f"  ...还有 {len(empty) - 3} 间可用")
-            else:
-                result_lines.append(f"\n😅 {slot_label}暂时没有可用空教室")
-            result_lines.append(f"\n💡 提示：数据来源于教务系统教室课表，建议去之前确认一下～")
-        elif has_study:
-            if morning_rooms:
-                result_lines.append(f"\n🏫 上午推荐自习：{morning_rooms[0]['room_name']} 📍{morning_rooms[0].get('building', '')}")
-            if afternoon_rooms:
-                result_lines.append(f"🏫 下午推荐自习：{afternoon_rooms[0]['room_name']} 📍{afternoon_rooms[0].get('building', '')}")
-            result_lines.append(f"\n💡 提示：数据来源于教务系统教室课表，建议去之前确认一下～")
-
+        result_lines = ["📅 本周课程安排概览："]
+        result_lines.extend(week_plan)
+        result_lines.append("\n💡 发送格式如「明天上午想去自习」可获取具体自习地点推荐！")
         return "\n".join(result_lines)
 
-    # 无具体日期 → 未来7天概览（优化：标注空闲时段和推荐教室）
-    week_plan = []
-    for i in range(7):
-        check_date = today + timedelta(days=i)
-        check_dow = check_date.weekday() + 1
-        check_week = course_svc._calculate_week_number(check_date)
-        day_courses = []
-        if user_id:
-            week_courses = await course_svc.get_courses_by_week(user_id, check_week)
-            day_courses = [c for c in week_courses if c.get("day_of_week") == check_dow]
-        has_class = bool(day_courses)
-        day_label = "今天" if i == 0 else ("明天" if i == 1 else weekday_names_str.get(check_dow, ""))
-        morning_empty = await room_svc.query_empty_rooms(day_of_week=check_dow, start_slot=1, end_slot=4, min_capacity=30) if not has_class else []
-        free_msg = f"（推荐自习{morning_empty[0]['room_name'] if morning_empty else ''}）" if morning_empty else ""
-        week_plan.append(f"{day_label}（{weekday_names_str.get(check_dow)}）{'📚 有课' if has_class else '🆓 无课' + free_msg}")
+    # ─── 有具体日期 → 查询该天课程 ───
+    courses = []
+    if user_id:
+        week_courses = await course_svc.get_courses_by_week(user_id, week_num)
+        courses = [c for c in week_courses if c.get("day_of_week") == day_of_week]
 
-    result_lines = ["📅 本周课程安排概览："]
-    result_lines.extend(week_plan)
-    result_lines.append("\n💡 发送格式如「今天上午想去自习」可获取具体自习地点推荐！")
+    has_study = "自习" in request or "学习" in request or "复习" in request or "图书馆" in request
+
+    result_lines = [f"📅 {date_label}（第{week_num}周）安排："]
+
+    # 标准节次对定义
+    slot_pairs = [
+        (1, 2, "1-2节（08:00-09:40）"),
+        (3, 4, "3-4节（10:05-11:40）"),
+        (5, 6, "5-6节（14:00-15:35）"),
+        (7, 8, "7-8节（16:00-17:35）"),
+        (9, 10, "9-10节（19:00-20:35）"),
+        (11, 12, "11-12节（21:00-22:00）"),
+    ]
+
+    def _is_slot_free(slot_start, slot_end):
+        """检查某个节次对是否有课"""
+        for c in courses:
+            cs = c.get("start_slot", 0)
+            ce = c.get("end_slot", 0)
+            if cs <= slot_end and ce >= slot_start:
+                return False, c
+        return True, None
+
+    def _format_rooms(rooms, limit=3):
+        if not rooms:
+            return None
+        parts = []
+        top = rooms[:limit]
+        for r in top:
+            cap = f"{r.get('capacity', '-')}座" if r.get("capacity") else ""
+            bld = r.get("building", "")
+            parts.append(f"    • {r['room_name']} 📍{bld} {cap}")
+        if len(rooms) > limit:
+            parts.append(f"    ...还有 {len(rooms) - limit} 间可用")
+        return "\n".join(parts)
+
+    # 按节次对逐段展示
+    for s_start, s_end, label in slot_pairs:
+        free, course = _is_slot_free(s_start, s_end)
+        if free:
+            line = f"\n🆓 {label}：空闲"
+            if has_study:
+                rooms = await room_svc.query_empty_rooms(day_of_week=day_of_week, start_slot=s_start, end_slot=s_end, min_capacity=30)
+                rooms_text = _format_rooms(rooms)
+                if rooms_text:
+                    line += "\n   推荐自习教室："
+                    line += f"\n{rooms_text}"
+            result_lines.append(line)
+        else:
+            loc = course.get("location", "未知地点")
+            result_lines.append(f"\n📚 {label}：{course['name']} 📍{loc}")
+
     return "\n".join(result_lines)
 
 

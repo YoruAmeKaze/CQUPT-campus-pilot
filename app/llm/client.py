@@ -23,72 +23,43 @@ logger = logging.getLogger(__name__)
 def _match_tool(question: str) -> Optional[str]:
     """
     尝试将用户问题匹配到预定义工具。
+    对于有自习/安排意图的查询，优先走 plan_schedule（综合处理课程+教室）。
+    纯课程/作业/待办查询由 LLM 的 Function Calling 自动路由。
 
-    优先级：预定义工具（快、稳、省） -> Text-to-SQL（灵活兜底）
-
-    返回工具名称，或 None 表示无法匹配（走 Text-to-SQL 或聊天）
+    返回工具名称，或 None 表示无法匹配（走 LLM 工具调用或聊天）
     """
     q = question.lower().strip()
 
-    # 创建待办
+    # ─── 创建待办 ───
     create_keywords = ["添加待办", "创建待办", "新增待办", "添加代办", "创建代办",
                        "帮我记", "提醒我", "别忘了"]
     if any(kw in q for kw in create_keywords):
         return "create_todo"
 
-    # 行程规划/自习安排
+    # ─── 行程规划/自习安排（优先匹配，综合处理课程+教室）───
     plan_keywords = ["自习", "学习", "复习", "安排", "行程", "计划", "去哪",
                      "哪里可以", "哪个教室", "图书馆", "无课", "有空"]
     if any(kw in q for kw in plan_keywords):
         return "plan_schedule"
 
-    # 今日课表
-    today_course = ["今天有什么课", "今天课表", "今天课程", "今天上课",
-                    "今日课表", "今日课程", "今日上课"]
-    if any(kw in q for kw in today_course):
-        return "get_today_courses"
-
-    # 明日课表
-    tomorrow_course = ["明天有什么课", "明天课表", "明天课程", "明天上课",
-                       "明日课表", "明日课程", "明日上课"]
-    if any(kw in q for kw in tomorrow_course):
-        return "get_tomorrow_courses"
-
-    # 本周课表
-    week_course = ["本周课表", "本周课程", "这周课表", "这周课程",
-                   "这周有什么课", "本周有什么课"]
-    if any(kw in q for kw in week_course):
-        return "get_this_week_courses"
-
-    # 当前周次
-    week_number = ["第几周", "当前周", "现在是第", "多少周", "几周了"]
-    if any(kw in q for kw in week_number):
-        return "get_current_week_number"
-
-    # 待完成作业
+    # ─── 待完成作业 ───
     pending_asmt = ["待完成作业", "没完成作业", "未完成作业", "有哪些作业",
                     "作业有哪些", "查看作业", "作业列表", "剩余作业",
                     "即将截止作业", "快要截止作业"]
     if any(kw in q for kw in pending_asmt):
         return "get_pending_assignments"
 
-    # 过期作业
+    # ─── 过期作业 ───
     if "过期" in q and "作业" in q:
         return "get_overdue_assignments"
 
-    # 查看待办
+    # ─── 查看待办 ───
     view_todo = ["查看待办", "查看todo", "我的待办", "我的todo",
                  "待办列表", "有哪些待办", "待办事项", "任务列表"]
     if any(kw in q for kw in view_todo):
         return "get_todos"
 
-    # 空教室查询
-    empty_room = ["空教室", "空闲教室", "哪里可以自习", "找教室",
-                  "有没有空教室", "教室有空", "没课教室"]
-    if any(kw in q for kw in empty_room):
-        return "query_empty_rooms"
-
-    # 未匹配到预定义工具，返回 None -> 降级到 Text-to-SQL 或聊天
+    # 未匹配 → 走 LLM Function Calling 或聊天
     return None
 
 DEEPSEEK_BASE_URL = settings.llm_base_url
@@ -439,17 +410,22 @@ async def chat_or_reply(
     智能对话：自动判断是否需要调用工具
     1. 先尝试关键词匹配预定义工具
     2. 匹配到工具 -> 直接执行（快、稳、省）
-    3. 未匹配 -> 交由 LLM 判断（走 Text-to-SQL 或聊天）
+    3. 未匹配 -> 交由 LLM 判断（走 Function Calling 或聊天）
     """
     # 第一步：尝试关键词匹配
     matched_tool = _match_tool(user_message)
 
     if matched_tool:
         logger.info(f"关键词匹配到工具: {matched_tool}")
-        tool_result = await execute_tool(matched_tool, {}, db)
+
+        # plan_schedule 需要传入用户原始消息来解析日期/时段
+        if matched_tool == "plan_schedule":
+            tool_result = await execute_tool("plan_schedule", {"request": user_message}, db)
+        else:
+            tool_result = await execute_tool(matched_tool, {}, db)
         return str(tool_result)
 
-    # 第二步：走 LLM 工具调用
+    # 第二步：走 LLM 工具调用（Function Calling）
     return await chat_with_tools(
         messages=[{"role": "user", "content": user_message}],
         db=db,

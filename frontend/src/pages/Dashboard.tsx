@@ -13,7 +13,6 @@ import {
   Bot,
   Brain,
   Wifi,
-  WifiOff,
   MessageSquare,
   Send,
   Database,

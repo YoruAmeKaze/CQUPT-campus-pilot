@@ -104,10 +104,18 @@ async def check_assignment_deadlines():
                 logger.warning("⚠️ 没有找到用户，跳过检查")
                 return
 
-            # 获取即将截止的作业（1天内）
+            # 获取即将截止的作业（1天内），自动过滤已过期的
             upcoming_assignments = await assignment_service.get_upcoming_assignments(
                 user.id, days=1
             )
+
+            # 双重过滤：确保不推送已过期太久的作业（安全兜底）
+            from datetime import timedelta as td
+            expire_cutoff = datetime.now() - td(days=60)
+            upcoming_assignments = [
+                a for a in upcoming_assignments
+                if not a.due_time or a.due_time >= expire_cutoff
+            ]
 
             if not upcoming_assignments:
                 logger.info("📭 没有即将截止的作业")
@@ -208,8 +216,8 @@ async def sync_assignments_periodically():
             assignments = await crawler.crawl_and_parse()
             
             if assignments:
-                new_count = await assignment_service.save_assignments(user.id, assignments)
-                logger.info(f"✅ 学习通作业同步完成，新增 {new_count} 条")
+                result = await assignment_service.save_assignments(user.id, assignments)
+                logger.info(f"✅ 学习通作业同步完成，新增 {result.get('new', 0)} 条，跳过过期 {result.get('skipped_expired', 0)} 条，跳过重复 {result.get('skipped_duplicate', 0)} 条")
             else:
                 logger.info("⏳ 学习通未抓取到新作业")
 
@@ -225,8 +233,8 @@ async def sync_assignments_periodically():
                 smartestu = SmartestuCrawler(student_id=sm_student_id, password=sm_password)
                 sm_assignments = await smartestu.crawl_and_parse()
                 if sm_assignments:
-                    sm_new = await assignment_service.save_assignments(user.id, sm_assignments)
-                    logger.info(f"✅ 数你最灵作业同步完成，新增 {sm_new} 条")
+                    sm_result = await assignment_service.save_assignments(user.id, sm_assignments)
+                    logger.info(f"✅ 数你最灵作业同步完成，新增 {sm_result.get('new', 0)} 条，跳过重复 {sm_result.get('skipped_duplicate', 0)} 条")
 
     except Exception as e:
         logger.error(f"❌ 定期作业同步任务异常: {e}", exc_info=True)

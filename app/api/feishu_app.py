@@ -6,8 +6,13 @@
 - 消息事件（用户 @机器人）
 
 包含消息去重机制，防止同一消息被多次处理
+
+异步处理策略：
+1. 收到回调 → 立即返回 200 ACK（防止飞书超时重试）
+2. AI 处理 + 回复消息 → asyncio.create_task 后台异步执行
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -31,15 +36,13 @@ def _get_feishu_app() -> FeishuAppService:
 
 
 # 已处理消息缓存（去重）
-# key: message_id, value: timestamp
 _processed_messages: dict = {}
-_DEDUP_TTL = 30  # 30秒内同一消息ID不再处理
+_DEDUP_TTL = 30
 
 
 def _is_duplicate(message_id: str) -> bool:
     """检查消息是否已处理过（去重）"""
     now = time.time()
-    # 清理过期记录
     expired = [mid for mid, ts in _processed_messages.items() if now - ts > _DEDUP_TTL]
     for mid in expired:
         _processed_messages.pop(mid, None)
@@ -50,6 +53,15 @@ def _is_duplicate(message_id: str) -> bool:
 
     _processed_messages[message_id] = now
     return False
+
+
+async def _handle_message_async(feishu_app: FeishuAppService, chat_id: str, text: str, db_factory):
+    """异步处理飞书消息（后台任务，不阻塞 webhook 响应）"""
+    try:
+        async with db_factory() as db:
+            await feishu_app.send_text_reply(chat_id, text, db=db)
+    except Exception as e:
+        logger.error(f"异步处理飞书消息失败: {e}", exc_info=True)
 
 
 @router.post("/event")
@@ -87,11 +99,12 @@ async def receive_event(request: Request, db: AsyncSession = Depends(get_db)):
             logger.warning("飞书应用未配置，无法回复")
             return JSONResponse(content={"code": 0, "msg": "ok"})
 
-        # 去重检查
         if message_id and _is_duplicate(message_id):
             return JSONResponse(content={"code": 0, "msg": "ok"})
 
-        await feishu_app.send_text_reply(chat_id, text, db=db)
+        # ✅ 异步处理：不等AI回复完就返回200，防止飞书超时
+        from app.db.session import async_session
+        asyncio.create_task(_handle_message_async(feishu_app, chat_id, text, async_session))
 
         return JSONResponse(content={"code": 0, "msg": "ok"})
 

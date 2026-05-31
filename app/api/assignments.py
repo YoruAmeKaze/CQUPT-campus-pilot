@@ -13,6 +13,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assignments", tags=["作业"])
 
 
+def _format_assignment(a) -> dict:
+    """格式化作业对象为字典"""
+    return {
+        "id": a.id,
+        "title": a.title,
+        "description": a.description,
+        "course_name": a.course_name,
+        "due_time": a.due_time.isoformat() if a.due_time else None,
+        "is_completed": a.is_completed,
+        "created_at": a.created_at.isoformat(),
+    }
+
+
 async def get_or_create_default_user(db: AsyncSession) -> int:
     """获取用户（获取有数据的用户）"""
     from sqlalchemy import select
@@ -22,32 +35,49 @@ async def get_or_create_default_user(db: AsyncSession) -> int:
     from app.config import settings
     student_id = settings.student_id or "STUDENT_ID"
     
-    # 查询该学号的用户
     result = await db.execute(select(User).where(User.student_id == student_id))
     user = result.scalar_one_or_none()
     
     if user:
         return user.id
     
-    # 如果没找到，尝试找第一个有课程的用户
     course_result = await db.execute(select(Course).limit(1))
     course = course_result.scalar_one_or_none()
     if course:
         return course.user_id
         
-    # 降级到 1
     return 1
 
 
 @router.get("")
 async def get_assignments(
-    status: Optional[str] = Query(None, description="筛选状态：pending|completed|all"),
+    status: Optional[str] = Query(None, description="筛选状态：pending|completed|expired|all"),
     limit: int = Query(100, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取作业列表"""
+    """
+    获取作业列表
+    
+    不传 status 时返回分类数据：{ pending, expired, completed }
+    传 status 时返回对应分类的列表
+    """
     user_id = await get_or_create_default_user(db)
     service = AssignmentService(db)
+
+    if not status:
+        # 返回分类数据
+        categorized = await service.get_assignments_with_expired(user_id, limit=limit)
+        return {
+            "success": True,
+            "pending": [_format_assignment(a) for a in categorized["pending"]],
+            "expired": [_format_assignment(a) for a in categorized["expired"]],
+            "completed": [_format_assignment(a) for a in categorized["completed"]],
+            "summary": {
+                "pending_count": len(categorized["pending"]),
+                "expired_count": len(categorized["expired"]),
+                "completed_count": len(categorized["completed"]),
+            },
+        }
 
     from app.services.config_store import ConfigStoreService
     from app.config import settings
@@ -63,18 +93,7 @@ async def get_assignments(
     
     return {
         "success": True,
-        "assignments": [
-            {
-                "id": a.id,
-                "title": a.title,
-                "description": a.description,
-                "course_name": a.course_name,
-                "due_time": a.due_time.isoformat() if a.due_time else None,
-                "is_completed": a.is_completed,
-                "created_at": a.created_at.isoformat(),
-            }
-            for a in assignments
-        ],
+        "assignments": [_format_assignment(a) for a in assignments],
     }
 
 
@@ -179,16 +198,20 @@ async def sync_assignments(db: AsyncSession = Depends(get_db)):
             else:
                 return
 
-            new_count = 0
+            save_result = {"new": 0, "updated": 0, "skipped_expired": 0}
             if assignments:
-                new_count = await service.save_assignments(user_id, assignments, source_id=ds.id)
-                total_new += new_count
+                save_result = await service.save_assignments(user_id, assignments, source_id=ds.id)
+                total_new += save_result.get("new", 0)
 
             ds.last_sync = datetime.now()
             ds.sync_status = "ok"
             ds.error_message = None
-            results.append({"source": label, "status": "ok", "new": new_count})
-            logger.info(f"  ✅ {label} 同步完成，新增 {new_count} 条")
+            results.append({
+                "source": label,
+                "status": "ok",
+                **save_result,
+            })
+            logger.info(f"  ✅ {label} 同步完成，新增 {save_result['new']} 条，跳过过期 {save_result.get('skipped_expired', 0)} 条，跳过重复 {save_result.get('skipped_duplicate', 0)} 条")
 
         except Exception as e:
             ds.sync_status = "error"
@@ -222,10 +245,7 @@ async def mark_completed(
     if not success:
         raise HTTPException(status_code=404, detail="作业不存在")
     
-    return {
-        "success": True,
-        "message": "已标记为完成",
-    }
+    return {"success": True, "message": "已标记为完成"}
 
 
 @router.delete("/{assignment_id}")
@@ -241,10 +261,7 @@ async def delete_assignment(
     if not success:
         raise HTTPException(status_code=404, detail="作业不存在")
     
-    return {
-        "success": True,
-        "message": "已删除",
-    }
+    return {"success": True, "message": "已删除"}
 
 
 @router.post("/cleanup")
@@ -265,3 +282,16 @@ async def cleanup_old_assignments(db: AsyncSession = Depends(get_db)):
 
     deleted = await service.delete_old_completed_assignments(user_id, days)
     return {"success": True, "message": f"已清理 {deleted} 条过时作业", "deleted": deleted}
+
+
+@router.post("/cleanup-expired")
+async def cleanup_expired_assignments(db: AsyncSession = Depends(get_db)):
+    """
+    清理已过期未完成的作业（手动触发）
+    
+    删除截止时间超过 120 天前且仍未完成的作业
+    """
+    user_id = await get_or_create_default_user(db)
+    service = AssignmentService(db)
+    deleted = await service.cleanup_expired_assignments(user_id)
+    return {"success": True, "message": f"已清理 {deleted} 条过期作业", "deleted": deleted}

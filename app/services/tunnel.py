@@ -26,9 +26,9 @@ TUNNEL_LOG_FILE = Path("data/tunnel.log")
 
 # 固定端口配置（勿修改）
 # 远程端口 9997：公网服务器 nginx 转发飞书回调到此端口
-# 本地端口 8000：隧道映射到本地开发服务器
+# 本地端口 8001：隧道映射到本地开发服务器
 TUNNEL_REMOTE_PORT = "9997"
-TUNNEL_LOCAL_PORT = "8000"
+TUNNEL_LOCAL_PORT = "8001"
 
 
 def _get_key_path() -> Optional[str]:

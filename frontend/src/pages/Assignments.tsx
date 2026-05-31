@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Check, Trash2, Plus, ChevronDown, ChevronUp, RefreshCw, Clock, BookOpen, Calendar } from 'lucide-react'
+import { Check, Trash2, Plus, ChevronDown, ChevronUp, RefreshCw, Clock, BookOpen, Calendar, AlertTriangle, Archive } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -39,18 +39,35 @@ interface DataSource {
   sync_status: string
 }
 
+interface AssignmentsResponse {
+  success: boolean
+  pending?: Assignment[]
+  expired?: Assignment[]
+  completed?: Assignment[]
+  assignments?: Assignment[]
+  summary?: {
+    pending_count: number
+    expired_count: number
+    completed_count: number
+  }
+}
+
 const DATA_SOURCE_TYPES = [
   { value: 'chaoxing', label: '学习通', description: '超星学习通作业抓取' },
   { value: 'smartestu', label: '数你最灵', description: '数你最灵作业抓取' },
 ]
 
 export default function Assignments() {
-  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([])
+  const [expiredAssignments, setExpiredAssignments] = useState<Assignment[]>([])
+  const [completedAssignments, setCompletedAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [sources, setSources] = useState<DataSource[]>([])
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [showAddSource, setShowAddSource] = useState(false)
   const [addSourceError, setAddSourceError] = useState('')
+  const [showExpired, setShowExpired] = useState(false)
+  const [showCompleted, setShowCompleted] = useState(true)
   const [newSource, setNewSource] = useState({
     type: '',
     username: '',
@@ -79,8 +96,18 @@ export default function Assignments() {
       setLoading(true)
       const res = await fetch('/api/assignments')
       if (res.ok) {
-        const data = await res.json()
-        setAssignments(data.assignments || [])
+        const data: AssignmentsResponse = await res.json()
+        // 兼容旧格式和新格式
+        if (data.pending && data.expired && data.completed) {
+          setPendingAssignments(data.pending)
+          setExpiredAssignments(data.expired)
+          setCompletedAssignments(data.completed)
+        } else if (data.assignments) {
+          // 旧格式兼容
+          setPendingAssignments(data.assignments.filter((a: Assignment) => !a.is_completed))
+          setExpiredAssignments([])
+          setCompletedAssignments(data.assignments.filter((a: Assignment) => a.is_completed))
+        }
       }
     } catch (error) {
       console.error('获取作业失败:', error)
@@ -125,6 +152,18 @@ export default function Assignments() {
       }
     } catch (error) {
       console.error('同步作业失败:', error)
+    }
+  }
+
+  const handleCleanupExpired = async () => {
+    if (!confirm(`确定要清理 ${expiredAssignments.length} 条已过期作业吗？`)) return
+    try {
+      const res = await fetch('/api/assignments/cleanup-expired', { method: 'POST' })
+      if (res.ok) {
+        fetchAssignments()
+      }
+    } catch (error) {
+      console.error('清理失败:', error)
     }
   }
 
@@ -188,6 +227,16 @@ export default function Assignments() {
     })
   }
 
+  const formatFullDate = (dateStr: string) => {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'ok':
@@ -198,9 +247,6 @@ export default function Assignments() {
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">待同步</Badge>
     }
   }
-
-  const pendingAssignments = assignments.filter(a => !a.is_completed)
-  const completedAssignments = assignments.filter(a => a.is_completed)
 
   return (
     <div className="space-y-6">
@@ -303,6 +349,7 @@ export default function Assignments() {
           </CardContent>
         </Card>
 
+        {/* 待完成作业 */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -317,7 +364,7 @@ export default function Assignments() {
             {loading ? (
               <p className="text-center text-muted-foreground py-8">加载中...</p>
             ) : pendingAssignments.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">暂无待完成作业</p>
+              <p className="text-center text-muted-foreground py-8">暂无待完成作业 🎉</p>
             ) : (
               <div className="space-y-3">
                 {pendingAssignments.map(assignment => (
@@ -360,40 +407,136 @@ export default function Assignments() {
           </CardContent>
         </Card>
 
+        {/* 已完成作业 */}
         {completedAssignments.length > 0 && (
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>已完成作业</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Archive className="w-5 h-5" />
+                已完成作业
+                <Badge variant="secondary">{completedAssignments.length}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCompleted(!showCompleted)}
+                  className="ml-auto"
+                >
+                  {showCompleted ? (
+                    <><ChevronUp className="w-4 h-4 mr-1" />收起</>
+                  ) : (
+                    <><ChevronDown className="w-4 h-4 mr-1" />展开 ({completedAssignments.length})</>
+                  )}
+                </Button>
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {completedAssignments.map(assignment => (
-                  <div
-                    key={assignment.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border opacity-60"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                      <Check className="w-4 h-4 text-green-600" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-medium line-through">{assignment.title}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {assignment.course_name}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(assignment.id)}
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      title="删除"
+            {showCompleted && (
+              <CardContent>
+                <div className="space-y-3">
+                  {completedAssignments.map(assignment => (
+                    <div
+                      key={assignment.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50 opacity-60"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                        <Check className="w-4 h-4 text-green-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium line-through truncate">{assignment.title}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {assignment.course_name}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(assignment.id)}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
+        {/* 已过期作业 */}
+        {expiredAssignments.length > 0 && (
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-muted-foreground" />
+                已过期作业
+                <Badge variant="secondary">{expiredAssignments.length}</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowExpired(!showExpired)}
+                  className="ml-auto"
+                >
+                  {showExpired ? (
+                    <><ChevronUp className="w-4 h-4 mr-1" />收起</>
+                  ) : (
+                    <><ChevronDown className="w-4 h-4 mr-1" />展开 ({expiredAssignments.length})</>
+                  )}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            {showExpired && (
+              <CardContent>
+                <div className="space-y-2 mb-4 p-3 bg-muted rounded-lg text-sm text-muted-foreground">
+                  以下作业已过截止日期且未提交。同步新作业时会自动跳过此类过期作业。
+                </div>
+                <div className="space-y-3">
+                  {expiredAssignments.map(assignment => (
+                    <div
+                      key={assignment.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50"
+                    >
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleMarkCompleted(assignment.id)}
+                        className="h-8 w-8 shrink-0"
+                        title="标记为已完成"
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate line-through">{assignment.title}</div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <span>{assignment.course_name}</span>
+                          <span>·</span>
+                          <span>截止于 {formatFullDate(assignment.due_time)}</span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(assignment.id)}
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCleanupExpired}
+                  >
+                    <Archive className="w-4 h-4 mr-2" />
+                    清理全部 ({expiredAssignments.length})
+                  </Button>
+                </div>
+              </CardContent>
+            )}
           </Card>
         )}
       </div>
