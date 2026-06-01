@@ -13,8 +13,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/assignments", tags=["作业"])
 
 
+PLATFORM_LABELS = {
+    "chaoxing": "学习通",
+    "smartestu": "数你最灵",
+    "jwxt": "教务系统",
+}
+
+PLATFORM_COLORS = {
+    "chaoxing": "blue",
+    "smartestu": "green",
+    "jwxt": "orange",
+}
+
+
 def _format_assignment(a) -> dict:
     """格式化作业对象为字典"""
+    source_type = a.source.type if a.source else None
+    source_name = a.source.name if a.source else None
     return {
         "id": a.id,
         "title": a.title,
@@ -23,6 +38,12 @@ def _format_assignment(a) -> dict:
         "due_time": a.due_time.isoformat() if a.due_time else None,
         "is_completed": a.is_completed,
         "created_at": a.created_at.isoformat(),
+        "source": {
+            "type": source_type,
+            "name": source_name or PLATFORM_LABELS.get(source_type, "未知"),
+            "label": PLATFORM_LABELS.get(source_type, "未知"),
+            "color": PLATFORM_COLORS.get(source_type, "gray"),
+        } if source_type else None,
     }
 
 

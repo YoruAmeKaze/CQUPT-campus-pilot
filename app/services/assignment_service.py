@@ -4,6 +4,7 @@ from datetime import datetime, date, timedelta
 from typing import List, Optional
 
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Assignment, User, DataSource
@@ -39,7 +40,7 @@ class AssignmentService:
         Returns:
             List[Assignment]: 作业列表
         """
-        query = select(Assignment).where(Assignment.user_id == user_id)
+        query = select(Assignment).options(selectinload(Assignment.source)).where(Assignment.user_id == user_id)
 
         if status == "pending":
             cutoff = datetime.now() - timedelta(days=EXPIRE_DAYS)
@@ -85,6 +86,7 @@ class AssignmentService:
         # 待完成（未过期）
         pending_query = (
             select(Assignment)
+            .options(selectinload(Assignment.source))
             .where(Assignment.user_id == user_id)
             .where(Assignment.is_completed == False)
             .where((Assignment.due_time >= expire_cutoff) | (Assignment.due_time == None))
@@ -97,6 +99,7 @@ class AssignmentService:
         # 已过期（未完成但截止时间过早）
         expired_query = (
             select(Assignment)
+            .options(selectinload(Assignment.source))
             .where(Assignment.user_id == user_id)
             .where(Assignment.is_completed == False)
             .where(Assignment.due_time < expire_cutoff)
@@ -109,6 +112,7 @@ class AssignmentService:
         # 已完成
         completed_query = (
             select(Assignment)
+            .options(selectinload(Assignment.source))
             .where(Assignment.user_id == user_id)
             .where(Assignment.is_completed == True)
             .order_by(Assignment.due_time.desc())
@@ -139,6 +143,7 @@ class AssignmentService:
         
         query = (
             select(Assignment)
+            .options(selectinload(Assignment.source))
             .where(Assignment.user_id == user_id)
             .where(Assignment.due_time >= start)
             .where(Assignment.due_time <= end)
@@ -171,6 +176,7 @@ class AssignmentService:
         
         query = (
             select(Assignment)
+            .options(selectinload(Assignment.source))
             .where(Assignment.user_id == user_id)
             .where(Assignment.due_time <= end_date)
             .where(Assignment.is_completed == False)

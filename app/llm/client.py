@@ -42,11 +42,18 @@ def _match_tool(question: str) -> Optional[str]:
     if any(kw in q for kw in plan_keywords):
         return "plan_schedule"
 
-    # ─── 待完成作业 ───
+    # ─── 待完成作业（广泛匹配，避免掉入LLM Function Calling产生DSML）───
     pending_asmt = ["待完成作业", "没完成作业", "未完成作业", "有哪些作业",
                     "作业有哪些", "查看作业", "作业列表", "剩余作业",
-                    "即将截止作业", "快要截止作业"]
+                    "即将截止作业", "快要截止作业", "要交的作业",
+                    "作业要交", "作业截止", "作业快截止",
+                    "几天内要交", "天内要交", "天内的作业",
+                    "最近作业", "当前作业", "本周作业"]
     if any(kw in q for kw in pending_asmt):
+        return "get_pending_assignments"
+    if "作业" in q and any(kw in q for kw in ["未完成", "要交", "截止", "到期",
+                                                "快交", "还有", "几天", "天内",
+                                                "未做", "没做", "没写", "提交"]):
         return "get_pending_assignments"
 
     # ─── 过期作业 ───
@@ -67,6 +74,20 @@ DEEPSEEK_BASE_URL = settings.llm_base_url
 def _build_system_prompt() -> str:
     from datetime import date
     today_str = date.today().isoformat()
+
+    # 从 term_start_date 动态推算学期
+    term_start = date.fromisoformat(settings.term_start_date)
+    term_year = term_start.year
+    term_month = term_start.month
+    if 2 <= term_month <= 7:
+        # 春季学期（第二学期），学年是前一年-当年
+        school_year = f"{term_year - 1}-{term_year}"
+        semester_label = "第二学期"
+    else:
+        # 秋季学期（第一学期），学年是当年-下一年
+        school_year = f"{term_year}-{term_year + 1}"
+        semester_label = "第一学期"
+
     return f"""你是 CampusPilot 校园助手，运行在重庆邮电大学学生的个人学业管理系统中。
 
 你可以帮助用户管理以下内容：
@@ -89,7 +110,7 @@ def _build_system_prompt() -> str:
 - 涉及时间时注意当前日期和时间
 
 当前用户：重庆邮电大学学生
-当前学期：2025-2026 学年第二学期
+当前学期：{school_year} 学年{semester_label}
 
 **关键节次时间参考（重邮作息）：**
 - 第1-2节：08:00-09:40
@@ -97,7 +118,7 @@ def _build_system_prompt() -> str:
 - 第5-6节：14:00-15:35
 - 第7-8节：16:00-17:35
 - 第9-10节：19:00-20:35
-- 第11-12节：21:00-22:00
+- 第11-12节：20:50-22:30
 """
 
 SYSTEM_PROMPT = _build_system_prompt()
@@ -392,7 +413,17 @@ async def chat_with_tools(
             max_tokens=max_tokens,
         )
 
-        return final_response.choices[0].message.content or "（查询完成）"
+        final_content = final_response.choices[0].message.content or "（查询完成）"
+
+        # 如果 LLM 最终回复仍包含 DSML 标签，剥离后返回自然语言部分
+        if "<tool_calls>" in final_content:
+            import re
+            clean = re.sub(r'<tool_calls>[\s\S]*?</tool_calls>', '', final_content).strip()
+            if clean:
+                return clean
+            return tool_result
+
+        return final_content
 
     except Exception as e:
         logger.error(f"LLM 工具调用失败: {e}", exc_info=True)
@@ -448,6 +479,21 @@ async def chat_or_reply(
         db=db,
         history=history,
     )
+
+    # 兜底：如果回复中还包含未解析的 DSML 调用标签，手动解析执行
+    if "<tool_calls>" in reply:
+        import re
+        clean_parts = re.split(r'<tool_calls>[\s\S]*?</tool_calls>', reply)
+        clean_text = ''.join(clean_parts).strip()
+
+        dsml_calls = _parse_dsml_tool_calls(reply)
+        if dsml_calls:
+            results = []
+            for tc in dsml_calls:
+                result = await execute_tool(tc["name"], tc["arguments"], db)
+                results.append(str(result))
+            tool_output = "\n\n".join(results)
+            reply = f"{clean_text}\n\n{tool_output}" if clean_text else tool_output
 
     # 记录记忆
     if session_id:

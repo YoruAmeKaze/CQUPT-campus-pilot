@@ -19,6 +19,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+interface SourceInfo {
+  type: string
+  name: string
+  label: string
+  color: string
+}
+
 interface Assignment {
   id: number
   title: string
@@ -27,6 +34,7 @@ interface Assignment {
   due_time: string
   is_completed: boolean
   created_at: string
+  source: SourceInfo | null
 }
 
 interface DataSource {
@@ -56,6 +64,25 @@ const DATA_SOURCE_TYPES = [
   { value: 'chaoxing', label: '学习通', description: '超星学习通作业抓取' },
   { value: 'smartestu', label: '数你最灵', description: '数你最灵作业抓取' },
 ]
+
+const PLATFORM_BADGE_STYLES: Record<string, string> = {
+  chaoxing: 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100',
+  smartestu: 'bg-green-100 text-green-700 border-green-200 hover:bg-green-100',
+  jwxt: 'bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100',
+}
+
+function PlatformBadge({ source }: { source: SourceInfo | null }) {
+  if (!source) return null
+  const colorClass = PLATFORM_BADGE_STYLES[source.type] || 'bg-gray-100 text-gray-700 border-gray-200'
+  return (
+    <Badge
+      variant="outline"
+      className={`text-xs font-normal ${colorClass} shrink-0`}
+    >
+      {source.label}
+    </Badge>
+  )
+}
 
 export default function Assignments() {
   const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([])
@@ -97,13 +124,11 @@ export default function Assignments() {
       const res = await fetch('/api/assignments')
       if (res.ok) {
         const data: AssignmentsResponse = await res.json()
-        // 兼容旧格式和新格式
         if (data.pending && data.expired && data.completed) {
           setPendingAssignments(data.pending)
           setExpiredAssignments(data.expired)
           setCompletedAssignments(data.completed)
         } else if (data.assignments) {
-          // 旧格式兼容
           setPendingAssignments(data.assignments.filter((a: Assignment) => !a.is_completed))
           setExpiredAssignments([])
           setCompletedAssignments(data.assignments.filter((a: Assignment) => a.is_completed))
@@ -376,13 +401,16 @@ export default function Assignments() {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleMarkCompleted(assignment.id)}
-                      className="h-8 w-8"
+                      className="h-8 w-8 shrink-0"
                     >
                       <Check className="w-4 h-4" />
                     </Button>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{assignment.title}</div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate">{assignment.title}</span>
+                        <PlatformBadge source={assignment.source} />
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
                         <span>{assignment.course_name}</span>
                         <span>·</span>
                         <span className="flex items-center gap-1">
@@ -395,7 +423,7 @@ export default function Assignments() {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDelete(assignment.id)}
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
                       title="删除"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -441,8 +469,11 @@ export default function Assignments() {
                         <Check className="w-4 h-4 text-green-600" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium line-through truncate">{assignment.title}</div>
-                        <div className="text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium line-through truncate">{assignment.title}</span>
+                          <PlatformBadge source={assignment.source} />
+                        </div>
+                        <div className="text-sm text-muted-foreground mt-0.5">
                           {assignment.course_name}
                         </div>
                       </div>
@@ -506,8 +537,11 @@ export default function Assignments() {
                         <Check className="w-4 h-4" />
                       </Button>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate line-through">{assignment.title}</div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium truncate line-through">{assignment.title}</span>
+                          <PlatformBadge source={assignment.source} />
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
                           <span>{assignment.course_name}</span>
                           <span>·</span>
                           <span>截止于 {formatFullDate(assignment.due_time)}</span>
