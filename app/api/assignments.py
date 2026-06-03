@@ -54,7 +54,7 @@ async def get_or_create_default_user(db: AsyncSession) -> int:
     
     # 先尝试用配置的学号找用户
     from app.config import settings
-    student_id = settings.student_id or "STUDENT_ID"
+    student_id = settings.student_id or ""
     
     result = await db.execute(select(User).where(User.student_id == student_id))
     user = result.scalar_one_or_none()

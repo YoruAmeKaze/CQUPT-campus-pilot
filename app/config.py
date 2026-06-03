@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     feishu_app_secret: str = ""
 
     # ===== 公网服务器（SSH隧道）=====
-    tunnel_server_host: str = "SERVER_IP"
+    tunnel_server_host: str = ""
     tunnel_server_user: str = "root"
     tunnel_remote_port: str = "9997"
     tunnel_local_port: str = "8000"

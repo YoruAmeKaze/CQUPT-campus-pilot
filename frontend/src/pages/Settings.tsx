@@ -386,7 +386,7 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <InputField label="学号" field="student_id" config={config} updateField={updateField} placeholder="STUDENT_ID" />
+                <InputField label="学号" field="student_id" config={config} updateField={updateField} placeholder="请输入学号" />
                 <div className="space-y-2">
                   <Label>部署模式</Label>
                   <div className="flex items-center gap-2 p-2 rounded-md border bg-muted/50">
@@ -707,7 +707,7 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <InputField label="服务器 IP" field="tunnel_server_host" config={config} updateField={updateField} placeholder="SERVER_IP" />
+                <InputField label="服务器 IP" field="tunnel_server_host" config={config} updateField={updateField} placeholder="例如: SERVER_IP" />
                 <InputField label="用户名" field="tunnel_server_user" config={config} updateField={updateField} placeholder="root" />
                 <InputField label="远程端口" field="tunnel_remote_port" config={config} updateField={updateField} placeholder="9999" />
                 <InputField label="本地端口" field="tunnel_local_port" config={config} updateField={updateField} placeholder="8000" />

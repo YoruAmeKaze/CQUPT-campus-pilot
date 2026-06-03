@@ -20,7 +20,7 @@ class TodoService:
         """获取或创建用户"""
         if student_id is None:
             from app.config import settings
-            student_id = settings.student_id or "STUDENT_ID"
+            student_id = settings.student_id or ""
         query = select(User).where(User.student_id == student_id)
         result = await self.db.execute(query)
         user = result.scalar_one_or_none()

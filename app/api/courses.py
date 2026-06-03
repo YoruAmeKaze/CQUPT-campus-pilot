@@ -18,17 +18,21 @@ router = APIRouter(prefix="/api/courses", tags=["课表"])
 
 async def _get_active_user_id(db: AsyncSession) -> int:
     """获取当前活跃用户的 ID"""
-    student_id = settings.student_id or "STUDENT_ID"
-    user_result = await db.execute(select(User).where(User.student_id == student_id))
+    if settings.student_id:
+        user_result = await db.execute(select(User).where(User.student_id == settings.student_id))
+        user = user_result.scalar_one_or_none()
+        if user:
+            return user.id
+    # 回退到第一个用户
+    user_result = await db.execute(select(User).limit(1))
     user = user_result.scalar_one_or_none()
     if user:
         return user.id
-
+    # 再从课程表中找
     course_result = await db.execute(select(Course).limit(1))
     course_with_data = course_result.scalar_one_or_none()
     if course_with_data:
         return course_with_data.user_id
-
     return 1
 
 
