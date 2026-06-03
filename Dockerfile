@@ -21,6 +21,10 @@ RUN playwright install chromium
 # 复制应用代码
 COPY . .
 
+# 复制 entrypoint 脚本
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # 创建数据目录
 RUN mkdir -p /app/data
 
@@ -28,4 +32,5 @@ RUN mkdir -p /app/data
 EXPOSE 8000
 
 # 启动命令
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

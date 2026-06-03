@@ -27,35 +27,40 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     logger.info("🚀 CampusPilot 启动中...")
 
-    # 自动生成 FERNET_KEY（如果 .env 中未设置）
-    env_path = Path(".env")
-    if env_path.exists():
-        env_content = env_path.read_text(encoding="utf-8")
-        if "FERNET_KEY=" in env_content and not settings.fernet_key:
-            try:
-                new_key = Fernet.generate_key().decode()
-                # 替换 .env 中的空 FERNET_KEY
-                new_content = env_content.replace("FERNET_KEY=", f"FERNET_KEY={new_key}")
-                env_path.write_text(new_content, encoding="utf-8")
-                settings.fernet_key = new_key
-                logger.info("🔑 已自动生成 FERNET_KEY 并写入 .env")
-            except Exception as e:
-                logger.warning(f"⚠️ FERNET_KEY 自动生成失败: {e}")
-    else:
-        # 创建默认 .env
+    # 确保 FERNET_KEY 存在（未设置时自动生成）
+    if not settings.fernet_key:
         try:
             new_key = Fernet.generate_key().decode()
-            env_path.write_text(
-                f"FERNET_KEY={new_key}\n"
-                "TZ=Asia/Shanghai\n"
-                "DATABASE_URL=sqlite+aiosqlite:///data/campus.db\n"
-                "FRONTEND_URL=http://localhost:3000\n",
-                encoding="utf-8",
-            )
             settings.fernet_key = new_key
-            logger.info("📝 已创建默认 .env 文件并生成 FERNET_KEY")
+            logger.info("🔑 已自动生成 FERNET_KEY（运行时内存）")
+
+            # 尝试写入 .env 文件供下次使用（不阻塞启动）
+            env_path = Path(".env")
+            try:
+                if env_path.is_file():
+                    content = env_path.read_text(encoding="utf-8")
+                    if "FERNET_KEY=" in content:
+                        new_content = content.replace("FERNET_KEY=", f"FERNET_KEY={new_key}")
+                        env_path.write_text(new_content, encoding="utf-8")
+                        logger.info("📝 FERNET_KEY 已写入 .env")
+                    else:
+                        env_path.write_text(
+                            f"FERNET_KEY={new_key}\n{content}", encoding="utf-8"
+                        )
+                        logger.info("📝 FERNET_KEY 已追加到 .env")
+                elif not env_path.exists():
+                    env_path.write_text(
+                        f"FERNET_KEY={new_key}\n"
+                        "TZ=Asia/Shanghai\n"
+                        "DATABASE_URL=sqlite+aiosqlite:///data/campus.db\n"
+                        "FRONTEND_URL=http://localhost:3000\n",
+                        encoding="utf-8",
+                    )
+                    logger.info("📝 已创建 .env 文件")
+            except OSError:
+                logger.info("📝 FERNET_KEY 保持运行时内存中（.env 不可写，如 Docker volume 挂载）")
         except Exception as e:
-            logger.warning(f"⚠️ 无法创建 .env 文件: {e}")
+            logger.warning(f"⚠️ FERNET_KEY 生成失败: {e}")
 
     # 启动时：初始化数据库
     await init_db()
