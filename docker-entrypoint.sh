@@ -1,11 +1,6 @@
 #!/bin/bash
 set -e
 
-# 确保 .env 是文件而非目录（Linux Docker volume 挂载的坑）
-if [ -d ".env" ]; then
-    rm -rf .env
-fi
-
 # 如果 .env 不存在（首次运行），自动创建
 if [ ! -f ".env" ]; then
     echo "[entrypoint] 首次运行，自动生成 .env 文件..."

@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./data:/app/data
-      - ./.env:/app/.env
+      # .env 不再挂载，由容器内的 entrypoint 自动生成和管理
     ports:
       - "8000:8000"
     environment:
